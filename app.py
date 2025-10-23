@@ -335,7 +335,7 @@ with st.sidebar:
     st.write(f"Umidade selecionada: {formatar_br(umidade_valor)}%")
     
     # Temperatura como parâmetro variável
-    temperatura_valor = st.slider("Temperatura média anual (°C)", 15, 35, 45, 25, 1)
+    temperatura_valor = st.slider("Temperatura média anual (°C)", 15, 35, 25, 1)
     st.write(f"Temperatura selecionada: {formatar_br(temperatura_valor)} °C")
     
     # DOC como parâmetro variável
