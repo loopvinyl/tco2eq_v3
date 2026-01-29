@@ -7,7 +7,6 @@ import plotly.graph_objects as go
 from datetime import datetime
 import io
 import warnings
-from urllib.request import urlopen
 import requests
 from io import BytesIO
 warnings.filterwarnings('ignore')
@@ -20,16 +19,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Configuração - Coloque seu URL do GitHub aqui
-GITHUB_RAW_URL = "https://raw.githubusercontent.com/SEU-USUARIO/SEU-REPOSITORIO/main/Dataset.xlsx"
+# URL do seu dataset no GitHub
+GITHUB_USER = "tco2eq_v3"
+GITHUB_REPO = "tco2eq_v3"  # Assumindo que o repositório tem o mesmo nome
+DATASET_PATH = "Dataset.xlsx"
+GITHUB_RAW_URL = f"https://raw.githubusercontent.com/{GITHUB_USER}/{GITHUB_REPO}/main/{DATASET_PATH}"
 
-# Cache para dados
-@st.cache_data(ttl=3600)  # Cache por 1 hora
+# Cache para dados (24 horas)
+@st.cache_data(ttl=86400, show_spinner="Carregando dados do GitHub...")
 def load_data_from_github(url):
     """Carrega dados diretamente do GitHub"""
     try:
-        st.info(f"🔄 Baixando dados do GitHub...")
-        
         # Baixar o arquivo
         response = requests.get(url)
         response.raise_for_status()
@@ -43,12 +43,10 @@ def load_data_from_github(url):
             df = pd.read_excel(excel_file, sheet_name=sheet)
             dataframes[sheet] = df
         
-        st.success(f"✅ Dados carregados! {len(sheets)} abas encontradas.")
         return dataframes, sheets
         
     except Exception as e:
         st.error(f"❌ Erro ao carregar dados do GitHub: {e}")
-        st.info("Tente fazer upload manual do arquivo.")
         return {}, []
 
 @st.cache_data
@@ -68,453 +66,553 @@ def load_excel_from_upload(file):
         st.error(f"Erro ao carregar arquivo: {e}")
         return {}, []
 
-# Funções de análise (mantidas do código anterior)
-def create_standards_dashboard(df):
-    """Dashboard específico para padrões"""
-    st.subheader("📊 Análise de Padrões de Carbono")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        total_standards = df.shape[0]
-        st.metric("Total de Padrões", total_standards)
-    
-    with col2:
-        if 'Name of standard/registry/platform' in df.columns:
-            unique_standards = df['Name of standard/registry/platform'].nunique()
-            st.metric("Padrões Únicos", unique_standards)
-    
-    with col3:
-        if 'Total registered projects' in df.columns:
-            try:
-                total_projects = pd.to_numeric(df['Total registered projects'], errors='coerce').sum()
-                st.metric("Projetos Registrados", f"{total_projects:,.0f}")
-            except:
-                st.metric("Projetos Registrados", "N/A")
-    
-    # Visualização
-    if 'Name of standard/registry/platform' in df.columns and 'Total registered projects' in df.columns:
-        try:
-            standards_df = df[['Name of standard/registry/platform', 'Total registered projects']].copy()
-            standards_df = standards_df.dropna()
-            standards_df['Total registered projects'] = pd.to_numeric(
-                standards_df['Total registered projects'], errors='coerce'
-            )
-            standards_df = standards_df.dropna()
-            
-            if not standards_df.empty:
-                fig = px.bar(
-                    standards_df.sort_values('Total registered projects', ascending=False).head(10),
-                    x='Name of standard/registry/platform',
-                    y='Total registered projects',
-                    title="Top 10 Padrões por Projetos Registrados",
-                    color='Total registered projects',
-                    color_continuous_scale='Viridis'
-                )
-                fig.update_layout(xaxis_tickangle=-45)
-                st.plotly_chart(fig, use_container_width=True)
-        except:
-            st.info("Não foi possível gerar o gráfico para esta aba.")
+# Funções de análise otimizadas
+def analyze_sheet_structure(df, sheet_name):
+    """Analisa a estrutura da aba"""
+    analysis = {
+        'sheet_name': sheet_name,
+        'rows': df.shape[0],
+        'columns': df.shape[1],
+        'numeric_cols': len(df.select_dtypes(include=[np.number]).columns),
+        'text_cols': len(df.select_dtypes(include=['object']).columns),
+        'null_percentage': (df.isnull().sum().sum() / (df.shape[0] * df.shape[1]) * 100),
+        'sample_columns': df.columns.tolist()[:5]
+    }
+    return analysis
 
-def create_projects_dashboard(df, sheet_name):
-    """Dashboard para abas de projetos"""
-    st.subheader(f"📈 Análise de Projetos - {sheet_name}")
+def create_dashboard_summary(dataframes, sheets):
+    """Cria resumo geral do dataset"""
+    st.subheader("📊 Resumo Geral do Dataset")
     
+    summary_data = []
+    for sheet in sheets:
+        if sheet in dataframes:
+            df = dataframes[sheet]
+            analysis = analyze_sheet_structure(df, sheet)
+            summary_data.append(analysis)
+    
+    summary_df = pd.DataFrame(summary_data)
+    
+    # Métricas gerais
     col1, col2, col3, col4 = st.columns(4)
-    
     with col1:
-        st.metric("Total de Projetos", df.shape[0])
-    
+        st.metric("Total de Abas", len(sheets))
     with col2:
-        st.metric("Total de Colunas", df.shape[1])
-    
+        total_rows = summary_df['rows'].sum()
+        st.metric("Total de Registros", f"{total_rows:,}")
     with col3:
-        numeric_cols = len(df.select_dtypes(include=[np.number]).columns)
-        st.metric("Colunas Numéricas", numeric_cols)
-    
+        total_cols = summary_df['columns'].sum()
+        st.metric("Total de Colunas", total_cols)
     with col4:
-        fill_rate = (df.count().sum() / (df.shape[0] * df.shape[1]) * 100)
-        st.metric("Dados Preenchidos", f"{fill_rate:.1f}%")
+        avg_fill = 100 - summary_df['null_percentage'].mean()
+        st.metric("Dados Preenchidos (média)", f"{avg_fill:.1f}%")
     
-    # Análise de créditos
-    credit_cols = [col for col in df.columns if 'credit' in str(col).lower()]
-    if credit_cols:
-        st.write("### 💰 Análise de Créditos")
+    # Tabela de resumo
+    st.dataframe(
+        summary_df[['sheet_name', 'rows', 'columns', 'numeric_cols', 'null_percentage']]
+        .rename(columns={
+            'sheet_name': 'Aba',
+            'rows': 'Linhas',
+            'columns': 'Colunas',
+            'numeric_cols': 'Col. Numéricas',
+            'null_percentage': '% Nulos'
+        }),
+        use_container_width=True
+    )
+
+def create_sheet_specific_analysis(df, sheet_name):
+    """Análise específica por tipo de aba"""
+    
+    # Aba de Standards
+    if sheet_name == '1. Standards':
+        st.subheader("🏆 Análise de Padrões de Carbono")
         
-        # Tentar encontrar coluna de créditos totais
-        for col in credit_cols:
-            try:
-                if df[col].dtype in [np.int64, np.float64]:
-                    total_credits = df[col].sum()
-                    avg_credits = df[col].mean()
+        if 'Name of standard/registry/platform' in df.columns:
+            standards_info = df[['Name of standard/registry/platform', 'Total registered projects']].copy()
+            standards_info = standards_info.dropna()
+            
+            if not standards_info.empty:
+                try:
+                    standards_info['Total registered projects'] = pd.to_numeric(
+                        standards_info['Total registered projects'], errors='coerce'
+                    )
+                    standards_info = standards_info.dropna()
                     
                     col1, col2 = st.columns(2)
+                    
                     with col1:
-                        st.metric("Total de Créditos", f"{total_credits:,.0f}")
+                        fig = px.bar(
+                            standards_info.sort_values('Total registered projects', ascending=False).head(10),
+                            x='Name of standard/registry/platform',
+                            y='Total registered projects',
+                            title="Top 10 Padrões por Projetos",
+                            color='Total registered projects',
+                            color_continuous_scale='Viridis'
+                        )
+                        fig.update_layout(xaxis_tickangle=-45)
+                        st.plotly_chart(fig, use_container_width=True)
+                    
                     with col2:
+                        total_projects = standards_info['Total registered projects'].sum()
+                        avg_projects = standards_info['Total registered projects'].mean()
+                        
+                        st.metric("Total de Projetos (estimado)", f"{total_projects:,.0f}")
+                        st.metric("Média por Padrão", f"{avg_projects:,.0f}")
+                        
+                        # Lista de padrões
+                        st.write("### 📋 Lista de Padrões")
+                        for idx, row in standards_info.iterrows():
+                            st.write(f"**{row['Name of standard/registry/platform']}**: {row['Total registered projects']:,.0f} projetos")
+                
+                except Exception as e:
+                    st.info(f"Não foi possível analisar os dados de padrões: {e}")
+    
+    # Aba de Projetos (4, 5, 6)
+    elif sheet_name in ['4. Agriculture', '5. Agroforestry-AR & Grassland', '6. Energy and Other ']:
+        st.subheader(f"🌱 Análise de Projetos - {sheet_name}")
+        
+        # Identificar colunas de créditos
+        credit_cols = [col for col in df.columns if 'credit' in str(col).lower() and 'issued' in str(col).lower()]
+        
+        if credit_cols:
+            try:
+                # Encontrar a melhor coluna de créditos
+                credit_col = credit_cols[0]
+                if df[credit_col].dtype in [np.int64, np.float64]:
+                    credits_data = df[credit_col].dropna()
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        total_credits = credits_data.sum()
+                        st.metric("Total de Créditos", f"{total_credits:,.0f}")
+                    
+                    with col2:
+                        avg_credits = credits_data.mean()
                         st.metric("Média por Projeto", f"{avg_credits:,.0f}")
-                    break
+                    
+                    with col3:
+                        max_credits = credits_data.max()
+                        st.metric("Máximo", f"{max_credits:,.0f}")
+                    
+                    # Distribuição
+                    fig = px.histogram(
+                        credits_data,
+                        nbins=30,
+                        title="Distribuição de Créditos",
+                        labels={'value': 'Créditos', 'count': 'Número de Projetos'}
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+            
             except:
-                continue
-
-def create_methodologies_dashboard(df):
-    """Dashboard para metodologias"""
-    st.subheader("🔬 Análise de Metodologias")
-    
-    # Encontrar coluna principal
-    main_col = None
-    for col in df.columns:
-        if 'methodology' in str(col).lower() or 'Unnamed: 2' == col:
-            main_col = col
-            break
-    
-    if main_col and df[main_col].nunique() > 1:
-        st.write(f"### 📚 Distribuição de Metodologias")
+                pass
         
-        methodology_counts = df[main_col].value_counts().head(10)
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            fig = px.bar(
-                x=methodology_counts.index,
-                y=methodology_counts.values,
-                title="Top 10 Metodologias",
-                labels={'x': 'Metodologia', 'y': 'Contagem'}
-            )
-            fig.update_layout(xaxis_tickangle=-45)
-            st.plotly_chart(fig, use_container_width=True)
-        
-        with col2:
+        # Análise por tipo de registro
+        if 'Unnamed: 2' in df.columns:
+            registry_counts = df['Unnamed: 2'].value_counts()
+            
             fig = px.pie(
-                values=methodology_counts.values,
-                names=methodology_counts.index,
-                title="Proporção das Metodologias",
+                values=registry_counts.values,
+                names=registry_counts.index,
+                title="Distribuição por Tipo de Registro",
                 hole=0.4
             )
             st.plotly_chart(fig, use_container_width=True)
+    
+    # Aba 7 (Plan Vivo, etc.)
+    elif sheet_name == '7. Plan Vivo, Acorn, Social C':
+        st.subheader("🌍 Projetos de Pequenos Produtores")
+        
+        if 'Standard' in df.columns and 'Issued credits' in df.columns:
+            # Análise por padrão
+            standard_analysis = df.groupby('Standard').agg({
+                'Issued credits': 'sum',
+                'Project name': 'count'
+            }).reset_index()
+            
+            standard_analysis = standard_analysis.rename(columns={
+                'Project name': 'Total Projetos',
+                'Issued credits': 'Total Créditos'
+            })
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig = px.bar(
+                    standard_analysis,
+                    x='Standard',
+                    y='Total Créditos',
+                    title='Créditos por Padrão',
+                    color='Total Projetos',
+                    color_continuous_scale='Blues'
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                fig = px.pie(
+                    standard_analysis,
+                    values='Total Projetos',
+                    names='Standard',
+                    title='Distribuição de Projetos',
+                    hole=0.4
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Métricas
+            total_credits = df['Issued credits'].sum()
+            total_projects = df.shape[0]
+            
+            st.metric("Total de Créditos Emitidos", f"{total_credits:,.0f}")
+            st.metric("Total de Projetos", total_projects)
+    
+    # Aba 8 (Puro.earth)
+    elif sheet_name == '8. Puro.earth':
+        st.subheader("🔥 Projetos de Biochar")
+        
+        # Identificar colunas numéricas
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        
+        if len(numeric_cols) > 0:
+            # Supondo que as colunas de 2019-2023 são as primeiras numéricas
+            year_cols = numeric_cols[:5] if len(numeric_cols) >= 5 else numeric_cols
+            
+            # Calcular totais por ano
+            yearly_totals = {}
+            for col in year_cols:
+                yearly_totals[col] = df[col].sum()
+            
+            yearly_df = pd.DataFrame({
+                'Ano': list(yearly_totals.keys()),
+                'Total': list(yearly_totals.values())
+            })
+            
+            fig = px.line(
+                yearly_df,
+                x='Ano',
+                y='Total',
+                title='Evolução de Créditos por Ano',
+                markers=True
+            )
+            st.plotly_chart(fig, use_container_width=True)
+    
+    # Aba 9 (Nori and BCarbon)
+    elif sheet_name == '9. Nori and BCarbon':
+        st.subheader("🌳 Projetos em Países Desenvolvidos")
+        
+        if 'Standard' in df.columns and 'Issued credits' in df.columns:
+            # Comparação entre padrões
+            comparison = df.groupby('Standard')['Issued credits'].agg(['sum', 'mean', 'count']).reset_index()
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("### 📊 Comparação entre Padrões")
+                st.dataframe(comparison, use_container_width=True)
+            
+            with col2:
+                fig = px.bar(
+                    comparison,
+                    x='Standard',
+                    y='sum',
+                    title='Total de Créditos por Padrão',
+                    color='count',
+                    color_continuous_scale='Greens'
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
 def main():
     # Título principal
     st.title("🌱 FAO Agrifood Carbon Market Dashboard")
-    st.markdown("""
+    st.markdown(f"""
     Dashboard interativo para análise do **Dataset do Mercado Voluntário de Carbono Agrícola** da FAO.
-    Dados carregados diretamente do GitHub.
+    *Dados carregados automaticamente do repositório: [{GITHUB_USER}/{GITHUB_REPO}](https://github.com/{GITHUB_USER}/{GITHUB_REPO})*
     """)
-    st.markdown("---")
+    
+    # Inicializar session state
+    if 'data_loaded' not in st.session_state:
+        st.session_state.data_loaded = False
     
     # Sidebar
     with st.sidebar:
-        st.header("⚙️ Fonte de Dados")
+        st.header("⚙️ Configuração")
         
-        # Opções de fonte de dados
+        # Opção de fonte de dados
         data_source = st.radio(
-            "Escolha a fonte de dados:",
-            ["GitHub (Automático)", "Upload Manual"],
+            "Fonte de dados:",
+            ["GitHub Automático", "Upload Manual"],
             index=0
         )
         
         dataframes = {}
         sheets = []
         
-        if data_source == "GitHub (Automático)":
-            # Campo para URL do GitHub
-            github_url = st.text_input(
-                "URL do Dataset no GitHub (raw):",
-                value=GITHUB_RAW_URL,
-                help="Cole o link raw do arquivo Excel no GitHub"
-            )
+        if data_source == "GitHub Automático":
+            st.info(f"Carregando de: {GITHUB_USER}/{GITHUB_REPO}")
             
-            if st.button("🔄 Carregar do GitHub") or github_url != GITHUB_RAW_URL:
-                with st.spinner("Carregando dados do GitHub..."):
-                    dataframes, sheets = load_data_from_github(github_url)
-            
+            if st.button("🔄 Carregar Dados", type="primary") or not st.session_state.data_loaded:
+                with st.spinner("Conectando ao GitHub..."):
+                    dataframes, sheets = load_data_from_github(GITHUB_RAW_URL)
+                    if dataframes:
+                        st.session_state.data_loaded = True
+                        st.session_state.dataframes = dataframes
+                        st.session_state.sheets = sheets
+                        st.success("✅ Dados carregados!")
+                    else:
+                        st.error("❌ Falha ao carregar dados")
+        
         else:  # Upload Manual
             uploaded_file = st.file_uploader(
-                "Faça upload do arquivo Excel",
-                type=['xlsx', 'xls']
+                "Faça upload do Dataset.xlsx",
+                type=['xlsx', 'xls'],
+                help="Caso o carregamento automático falhe"
             )
             
             if uploaded_file:
                 with st.spinner("Processando arquivo..."):
                     dataframes, sheets = load_excel_from_upload(uploaded_file)
+                    if dataframes:
+                        st.session_state.data_loaded = True
+                        st.session_state.dataframes = dataframes
+                        st.session_state.sheets = sheets
+                        st.success("✅ Arquivo processado!")
         
         st.markdown("---")
         
-        if dataframes:
-            st.success(f"✅ {len(sheets)} abas carregadas")
-            
-            # Seletor de aba
+        # Navegação (se dados carregados)
+        if st.session_state.data_loaded:
             st.header("📂 Navegação")
+            
             selected_sheet = st.selectbox(
                 "Selecione a aba para análise:",
-                sheets,
-                index=1 if len(sheets) > 1 else 0  # Pular README se existir
+                st.session_state.sheets,
+                index=1 if len(st.session_state.sheets) > 1 else 0
             )
             
             st.markdown("---")
-            st.header("📊 Métricas Rápidas")
+            st.header("🚀 Ações Rápidas")
             
-            if selected_sheet in dataframes:
-                df = dataframes[selected_sheet]
-                st.write(f"**{selected_sheet}**")
-                st.write(f"- 📊 {df.shape[0]} registros")
-                st.write(f"- 📋 {df.shape[1]} colunas")
-                st.write(f"- 📈 {len(df.select_dtypes(include=[np.number]).columns)} colunas numéricas")
-                
-                # Botão de download
-                st.markdown("---")
-                st.header("💾 Exportação")
-                csv = df.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="📥 Baixar aba atual (CSV)",
-                    data=csv,
-                    file_name=f"{selected_sheet.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.csv",
-                    mime="text/csv"
-                )
+            if st.button("📊 Ver Resumo Geral"):
+                st.session_state.show_summary = True
             
-            return dataframes, sheets, selected_sheet
+            if st.button("🔄 Atualizar Cache"):
+                st.cache_data.clear()
+                st.rerun()
+            
+            return selected_sheet
     
     # Conteúdo principal
-    if 'dataframes' not in locals() or not dataframes:
+    if not st.session_state.get('data_loaded', False):
         # Tela inicial
-        st.info("👈 **Configure a fonte de dados na barra lateral para começar**")
+        st.info("👈 **Selecione a fonte de dados na barra lateral e clique em 'Carregar Dados'**")
         
-        # Layout de introdução
+        # Layout informativo
         col1, col2 = st.columns(2)
         
         with col1:
             st.markdown("""
-            ### 📊 Sobre o Dataset
+            ### 📋 Sobre o Dataset
             
-            **FAO Agrifood Voluntary Carbon Market Dataset** contém:
+            **Agrifood Voluntary Carbon Market Dataset** (FAO, 2025)
             
-            • **12 padrões** de mercado de carbono  
-            • **13 plataformas** de MRV  
-            • **89 metodologias** de cálculo  
-            • **758 projetos** agrícolas  
-            • **170 projetos** agroflorestais  
-            • **29 projetos** de energia  
-            • Dados de **1996 a 2023**
+            • **10 abas** organizadas tematicamente  
+            • **1,000+ projetos** de carbono analisados  
+            • **1996-2023** dados históricos  
+            • **Padrões globais** (Verra, Gold Standard, etc.)  
+            • **Metodologias** de cálculo documentadas  
+            • **Plataformas** de MRV e monitoramento
             """)
+            
+            st.image("https://www.fao.org/assets/images/FAO-logo-white.svg", width=200)
         
         with col2:
             st.markdown("""
-            ### 🎯 Funcionalidades
+            ### 🎯 Análises Disponíveis
             
-            • **Análise por categoria**  
-            • **Visualizações interativas**  
-            • **Filtros dinâmicos**  
-            • **Exportação de dados**  
-            • **Insights automáticos**  
-            • **Comparação entre abas**
+            **1. Padrões & Certificações**  
+            - Comparação entre padrões  
+            - Projetos registrados  
+            - Escopos e metodologias  
+            
+            **2. Projetos por Categoria**  
+            - Agricultura (758 projetos)  
+            - Agroflorestal (170 projetos)  
+            - Energia (29 projetos)  
+            
+            **3. Plataformas Especializadas**  
+            - Plan Vivo, Acorn, Social Carbon  
+            - Puro.earth (biochar)  
+            - Nori, BCarbon  
+            
+            **4. Metodologias**  
+            - 89 metodologias documentadas  
+            - Análise por tipo e padrão
             """)
         
-        # Exemplo de visualização estática
-        st.markdown("---")
-        st.subheader("📈 Exemplo de Análise")
+        # Botão para carregar automaticamente
+        if st.button("🚀 Carregar Dados Automaticamente", type="primary"):
+            with st.spinner("Conectando ao GitHub..."):
+                dataframes, sheets = load_data_from_github(GITHUB_RAW_URL)
+                if dataframes:
+                    st.session_state.data_loaded = True
+                    st.session_state.dataframes = dataframes
+                    st.session_state.sheets = sheets
+                    st.rerun()
+                else:
+                    st.error("Não foi possível carregar os dados. Tente o upload manual.")
         
-        # Dados de exemplo para demonstração
-        example_data = pd.DataFrame({
-            'Category': ['Agriculture', 'Agroforestry', 'Energy', 'Biochar', 'Small Projects'],
-            'Projects': [758, 170, 29, 37, 55],
-            'Avg_Credits': [25000, 18000, 45000, 12000, 8000],
-            'Years_Active': [15, 12, 10, 5, 8]
-        })
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            fig = px.bar(
-                example_data,
-                x='Category',
-                y='Projects',
-                title='Projetos por Categoria (Exemplo)',
-                color='Avg_Credits',
-                color_continuous_scale='Blues'
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        
-        with col2:
-            fig = px.scatter(
-                example_data,
-                x='Projects',
-                y='Avg_Credits',
-                size='Years_Active',
-                color='Category',
-                title='Relação Projetos vs Créditos (Exemplo)',
-                labels={'Projects': 'Número de Projetos', 'Avg_Credits': 'Créditos Médios'}
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        
-        return None, None, None
+        return None
     
     else:
-        # Processar dados carregados
-        dataframes, sheets, selected_sheet = main()
+        # Dados carregados - mostrar conteúdo
+        selected_sheet = main()
         
-        if selected_sheet and selected_sheet in dataframes:
-            df = dataframes[selected_sheet]
+        if selected_sheet:
+            df = st.session_state.dataframes[selected_sheet]
+            sheets = st.session_state.sheets
+            
+            # Mostrar resumo geral se solicitado
+            if st.session_state.get('show_summary', False):
+                create_dashboard_summary(st.session_state.dataframes, sheets)
+                st.markdown("---")
             
             # Cabeçalho da aba
             st.header(f"📄 {selected_sheet}")
             
-            # Dashboard específico baseado no tipo de aba
-            if selected_sheet == '1. Standards':
-                create_standards_dashboard(df)
-            elif selected_sheet == '3. Methodologies':
-                create_methodologies_dashboard(df)
-            elif selected_sheet in ['4. Agriculture', '5. Agroforestry-AR & Grassland', '6. Energy and Other ']:
-                create_projects_dashboard(df, selected_sheet)
-            else:
-                # Dashboard genérico
-                st.subheader("📋 Informações Gerais")
-                
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    st.metric("Registros", df.shape[0])
-                
-                with col2:
-                    st.metric("Colunas", df.shape[1])
-                
-                with col3:
-                    numeric_cols = len(df.select_dtypes(include=[np.number]).columns)
-                    st.metric("Colunas Numéricas", numeric_cols)
-                
-                with col4:
-                    fill_rate = (df.count().sum() / (df.shape[0] * df.shape[1]) * 100)
-                    st.metric("Dados Preenchidos", f"{fill_rate:.1f}%")
+            # Métricas rápidas
+            col1, col2, col3, col4 = st.columns(4)
             
-            # Tabs principais
-            tab1, tab2, tab3, tab4 = st.tabs(["📊 Dados", "🔍 Análise", "📈 Visualizações", "💡 Insights"])
+            with col1:
+                st.metric("Registros", df.shape[0])
+            
+            with col2:
+                st.metric("Colunas", df.shape[1])
+            
+            with col3:
+                numeric_cols = len(df.select_dtypes(include=[np.number]).columns)
+                st.metric("Colunas Numéricas", numeric_cols)
+            
+            with col4:
+                fill_rate = 100 - (df.isnull().sum().sum() / (df.shape[0] * df.shape[1]) * 100)
+                st.metric("Dados Preenchidos", f"{fill_rate:.1f}%")
+            
+            # Análise específica da aba
+            create_sheet_specific_analysis(df, selected_sheet)
+            
+            # Tabs para análise detalhada
+            tab1, tab2, tab3, tab4 = st.tabs(["📋 Dados", "🔍 Análise", "📈 Visualizações", "💾 Exportar"])
             
             with tab1:
                 # Visualização dos dados
                 st.subheader("Visualização dos Dados")
                 
-                # Filtros de colunas
-                all_columns = df.columns.tolist()
-                selected_columns = st.multiselect(
-                    "Selecione colunas para mostrar:",
-                    all_columns,
-                    default=all_columns[:min(10, len(all_columns))]
-                )
+                # Filtros
+                col1, col2 = st.columns(2)
                 
-                # Número de linhas
-                rows_to_show = st.slider(
-                    "Número de linhas para mostrar:",
-                    min_value=10,
-                    max_value=min(500, df.shape[0]),
-                    value=100,
-                    step=10
-                )
+                with col1:
+                    columns_to_show = st.multiselect(
+                        "Colunas para mostrar:",
+                        df.columns.tolist(),
+                        default=df.columns.tolist()[:min(8, len(df.columns))]
+                    )
                 
-                # Filtrar dados
-                if selected_columns:
-                    display_df = df[selected_columns].head(rows_to_show)
+                with col2:
+                    rows_to_show = st.slider(
+                        "Linhas:",
+                        min_value=10,
+                        max_value=min(500, df.shape[0]),
+                        value=100,
+                        step=10
+                    )
+                
+                # Mostrar dados
+                if columns_to_show:
+                    display_df = df[columns_to_show].head(rows_to_show)
                 else:
                     display_df = df.head(rows_to_show)
                 
-                # Mostrar tabela
-                st.dataframe(display_df, use_container_width=True)
-                
-                # Estatísticas
-                st.subheader("📊 Estatísticas Descritivas")
-                numeric_cols = df.select_dtypes(include=[np.number]).columns
-                
-                if len(numeric_cols) > 0:
-                    st.dataframe(df[numeric_cols].describe(), use_container_width=True)
-                else:
-                    st.info("Não há colunas numéricas nesta aba.")
+                st.dataframe(display_df, use_container_width=True, height=400)
             
             with tab2:
                 # Análise detalhada
                 st.subheader("Análise Detalhada")
                 
-                # Análise de valores ausentes
+                # Valores ausentes
                 st.write("### 🔍 Valores Ausentes")
                 
-                missing_data = pd.DataFrame({
+                missing_df = pd.DataFrame({
                     'Coluna': df.columns,
-                    'Valores Ausentes': df.isnull().sum().values,
-                    'Percentual': (df.isnull().sum() / len(df) * 100).round(2).values
-                })
-                missing_data = missing_data[missing_data['Valores Ausentes'] > 0]
+                    'Valores Ausentes': df.isnull().sum(),
+                    '% Ausentes': (df.isnull().sum() / len(df) * 100).round(2)
+                }).sort_values('% Ausentes', ascending=False)
                 
-                if len(missing_data) > 0:
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.dataframe(
-                            missing_data.sort_values('Percentual', ascending=False),
-                            use_container_width=True
+                col1, col2 = st.columns([1, 2])
+                
+                with col1:
+                    st.dataframe(
+                        missing_df[missing_df['Valores Ausentes'] > 0],
+                        use_container_width=True
+                    )
+                
+                with col2:
+                    if len(missing_df[missing_df['Valores Ausentes'] > 0]) > 0:
+                        fig = px.bar(
+                            missing_df.head(20),
+                            x='Coluna',
+                            y='% Ausentes',
+                            title='Top 20 Colunas com Valores Ausentes',
+                            color='% Ausentes',
+                            color_continuous_scale='Reds'
                         )
-                    
-                    with col2:
-                        if len(missing_data) > 0:
-                            fig = px.bar(
-                                missing_data.head(20),
-                                x='Coluna',
-                                y='Percentual',
-                                title='Top 20 Colunas com Valores Ausentes',
-                                color='Percentual',
-                                color_continuous_scale='Reds'
-                            )
-                            fig.update_layout(xaxis_tickangle=-45)
-                            st.plotly_chart(fig, use_container_width=True)
+                        fig.update_layout(xaxis_tickangle=-45)
+                        st.plotly_chart(fig, use_container_width=True)
+                
+                # Estatísticas
+                st.write("### 📊 Estatísticas Descritivas")
+                
+                numeric_df = df.select_dtypes(include=[np.number])
+                if not numeric_df.empty:
+                    st.dataframe(numeric_df.describe(), use_container_width=True)
                 else:
-                    st.success("✅ Não há valores ausentes nesta aba!")
-                
-                # Tipos de dados
-                st.write("### 📋 Tipos de Dados")
-                
-                type_data = pd.DataFrame({
-                    'Coluna': df.columns,
-                    'Tipo': df.dtypes.astype(str).values,
-                    'Valores Únicos': [df[col].nunique() for col in df.columns]
-                })
-                
-                st.dataframe(type_data, use_container_width=True)
+                    st.info("Não há colunas numéricas para análise estatística.")
             
             with tab3:
                 # Visualizações
-                st.subheader("Visualizações Gráficas")
+                st.subheader("Visualizações Interativas")
                 
                 # Seleção de tipo de gráfico
                 chart_type = st.selectbox(
                     "Tipo de Gráfico:",
-                    ["Histograma", "Barras", "Dispersão", "Box Plot", "Pizza"]
+                    ["Histograma", "Barras", "Dispersão", "Box Plot"]
                 )
                 
-                # Seleção de colunas
+                # Colunas disponíveis
                 numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
                 categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
                 
                 if chart_type == "Histograma" and numeric_cols:
-                    selected_col = st.selectbox("Selecione coluna numérica:", numeric_cols)
+                    selected_col = st.selectbox("Selecione coluna:", numeric_cols)
                     if selected_col:
                         fig = px.histogram(
                             df,
                             x=selected_col,
                             nbins=30,
                             title=f"Distribuição de {selected_col}",
-                            color_discrete_sequence=['#2E8B57']
+                            color_discrete_sequence=['#00A86B']
                         )
                         st.plotly_chart(fig, use_container_width=True)
                 
                 elif chart_type == "Barras" and categorical_cols:
-                    selected_col = st.selectbox("Selecione coluna categórica:", categorical_cols)
+                    selected_col = st.selectbox("Selecione coluna:", categorical_cols)
                     if selected_col:
                         top_n = st.slider("Número de categorias:", 5, 20, 10)
-                        value_counts = df[selected_col].value_counts().head(top_n)
+                        top_values = df[selected_col].value_counts().head(top_n)
                         
                         fig = px.bar(
-                            x=value_counts.index,
-                            y=value_counts.values,
+                            x=top_values.index,
+                            y=top_values.values,
                             title=f"Top {top_n} {selected_col}",
                             labels={'x': selected_col, 'y': 'Contagem'},
-                            color=value_counts.values,
+                            color=top_values.values,
                             color_continuous_scale='Viridis'
                         )
                         fig.update_layout(xaxis_tickangle=-45)
@@ -536,89 +634,80 @@ def main():
                         st.plotly_chart(fig, use_container_width=True)
             
             with tab4:
-                # Insights
-                st.subheader("💡 Insights e Recomendações")
-                
-                # Análise automática
-                total_cells = df.shape[0] * df.shape[1]
-                filled_cells = df.count().sum()
-                fill_rate = (filled_cells / total_cells * 100)
-                
-                # Insights
-                insights = []
-                
-                if fill_rate < 50:
-                    insights.append("⚠️ **Baixa qualidade de dados**: Menos de 50% dos dados estão preenchidos")
-                
-                if len(numeric_cols) >= 3:
-                    insights.append("📊 **Boa base numérica**: Várias colunas numéricas para análise estatística")
-                
-                if any('credit' in col.lower() for col in df.columns):
-                    insights.append("💰 **Dados financeiros disponíveis**: Possibilidade de análise de créditos de carbono")
-                
-                if any('year' in col.lower() for col in df.columns):
-                    insights.append("📅 **Dados temporais**: Possibilidade de análise de tendências ao longo do tempo")
-                
-                # Mostrar insights
-                if insights:
-                    st.write("### 📌 Insights Identificados")
-                    for insight in insights:
-                        st.write(f"- {insight}")
-                else:
-                    st.info("Execute uma análise mais detalhada para obter insights.")
-                
-                # Recomendações
-                st.write("### 🔧 Recomendações de Análise")
+                # Exportação
+                st.subheader("💾 Exportar Dados")
                 
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    st.write("**Para esta aba:**")
-                    st.write("1. Limpeza de dados ausentes")
-                    st.write("2. Normalização de colunas")
-                    st.write("3. Criação de indicadores")
-                    st.write("4. Análise de correlação")
+                    # Exportar aba atual
+                    csv = df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Baixar aba atual (CSV)",
+                        data=csv,
+                        file_name=f"{selected_sheet.replace(' ', '_').replace('.', '_')}.csv",
+                        mime="text/csv",
+                        type="primary"
+                    )
                 
                 with col2:
-                    st.write("**Próximos passos:**")
-                    st.write("1. Comparar com outras abas")
-                    st.write("2. Análise temporal (se houver datas)")
-                    st.write("3. Segmentação por categorias")
-                    st.write("4. Exportar relatório")
+                    # Exportar todas as abas
+                    if st.button("📚 Baixar todas as abas (ZIP)"):
+                        import zipfile
+                        from io import BytesIO
+                        
+                        zip_buffer = BytesIO()
+                        with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+                            for sheet_name, sheet_df in st.session_state.dataframes.items():
+                                csv_data = sheet_df.to_csv(index=False)
+                                zip_file.writestr(
+                                    f"{sheet_name.replace(' ', '_').replace('.', '_')}.csv",
+                                    csv_data
+                                )
+                        
+                        zip_buffer.seek(0)
+                        
+                        st.download_button(
+                            label="⬇️ Download ZIP",
+                            data=zip_buffer,
+                            file_name="fao_carbon_dataset_all_sheets.zip",
+                            mime="application/zip"
+                        )
                 
-                # Botão para análise avançada
-                if st.button("🚀 Executar Análise Avançada", type="primary"):
-                    with st.spinner("Processando análise avançada..."):
-                        # Simulação de análise
-                        st.success("Análise concluída!")
-                        
-                        # Resultados simulados
-                        results = {
-                            "Correlações encontradas": 3,
-                            "Outliers identificados": 12,
-                            "Tendências detectadas": 2,
-                            "Recomendações geradas": 5
-                        }
-                        
-                        for key, value in results.items():
-                            st.write(f"**{key}:** {value}")
+                # Exportar análise
+                st.write("### 📊 Exportar Análise")
+                
+                analysis_text = f"""
+                # Análise da Aba: {selected_sheet}
+                Data: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+                
+                ## Métricas:
+                - Total de registros: {df.shape[0]}
+                - Total de colunas: {df.shape[1]}
+                - Colunas numéricas: {len(df.select_dtypes(include=[np.number]).columns)}
+                - Dados preenchidos: {100 - (df.isnull().sum().sum() / (df.shape[0] * df.shape[1]) * 100):.1f}%
+                
+                ## Colunas:
+                {', '.join(df.columns.tolist()[:10])}...
+                
+                ## Estatísticas:
+                {df.describe().to_string() if not df.select_dtypes(include=[np.number]).empty else 'Sem colunas numéricas'}
+                """
+                
+                st.download_button(
+                    label="📄 Baixar Relatório (TXT)",
+                    data=analysis_text,
+                    file_name=f"relatorio_{selected_sheet.replace(' ', '_')}.txt",
+                    mime="text/plain"
+                )
             
-            # Resumo de todas as abas
+            # Footer
             st.markdown("---")
-            st.subheader("📋 Resumo de Todas as Abas")
-            
-            summary_data = []
-            for sheet in sheets:
-                sheet_df = dataframes[sheet]
-                summary_data.append({
-                    'Aba': sheet,
-                    'Registros': sheet_df.shape[0],
-                    'Colunas': sheet_df.shape[1],
-                    'Preenchido (%)': round((sheet_df.count().sum() / (sheet_df.shape[0] * sheet_df.shape[1]) * 100), 1)
-                })
-            
-            summary_df = pd.DataFrame(summary_data)
-            st.dataframe(summary_df, use_container_width=True)
+            st.caption(f"""
+            📊 **FAO Agrifood Carbon Market Dashboard** • 
+            Dados carregados de: [{GITHUB_USER}/{GITHUB_REPO}](https://github.com/{GITHUB_USER}/{GITHUB_REPO}) • 
+            Última atualização: {datetime.now().strftime('%d/%m/%Y %H:%M')}
+            """)
 
 if __name__ == "__main__":
     main()
