@@ -12,148 +12,146 @@ warnings.filterwarnings("ignore")
 # CONFIGURAÇÃO DA PÁGINA
 # =========================
 st.set_page_config(
-    page_title="FAO Carbon Market Dashboard",
-    page_icon="🌱",
+    page_title="FAO Agrifood Carbon Market",
+    page_icon="🌍",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # =========================
-# CARREGAMENTO DE DADOS
+# LOAD DO EXCEL LOCAL (GITHUB)
 # =========================
 @st.cache_data(ttl=86400)
 def load_data():
     file_path = "Dataset.xlsx"
     
+    # Verifica se o arquivo existe antes de tentar carregar
     if not os.path.exists(file_path):
         return None, None
     
     try:
-        # engine='openpyxl' é obrigatório para arquivos .xlsx no Streamlit Cloud
+        # engine='openpyxl' é essencial para ambientes Linux/Cloud
         excel = pd.ExcelFile(file_path, engine='openpyxl')
         data = {sheet: excel.parse(sheet) for sheet in excel.sheet_names}
         return data, excel.sheet_names
     except Exception as e:
-        st.error(f"Erro crítico ao ler o Excel: {e}")
+        st.error(f"Erro ao carregar o arquivo: {e}")
         return None, None
 
 # =========================
-# LÓGICA DE INSIGHTS (CORRIGIDA)
+# FUNÇÕES DE APOIO
 # =========================
-def get_smart_insights(df):
-    insights = []
+def dataset_overview(dataframes):
+    if not dataframes: return 0, 0, 0, 0
+    rows = sum(df.shape[0] for df in dataframes.values())
+    cols = sum(df.shape[1] for df in dataframes.values())
+    numeric = sum(len(df.select_dtypes(include=np.number).columns) for df in dataframes.values())
     
-    # Seleciona apenas colunas numéricas que tenham ao menos um valor válido
-    numeric_cols = df.select_dtypes(include=[np.number]).dropna(axis=1, how='all')
+    fills = []
+    for df in dataframes.values():
+        if df.empty: continue
+        fill = 100 - (df.isnull().sum().sum() / (df.shape[0] * df.shape[1]) * 100)
+        fills.append(fill)
+    
+    avg_fill = np.mean(fills) if fills else 0
+    return rows, cols, numeric, avg_fill
+
+def smart_insights(df):
+    insights = []
+    numeric_cols = df.select_dtypes(include=np.number)
     
     if not numeric_cols.empty:
-        try:
-            # Calcula variância ignorando nulos
-            vars = numeric_cols.var().dropna()
-            if not vars.empty:
-                top_col = vars.idxmax()
-                max_val = numeric_cols[top_col].max()
-                insights.append(f"🔍 **Maior variabilidade:** Coluna `{top_col}`")
-                insights.append(f"📈 **Valor máximo em `{top_col}`:** {max_val:,.2f}")
-        except:
-            pass
+        # Evita erro se as colunas forem todas zeros/nulos
+        variances = numeric_cols.var()
+        if not variances.empty:
+            col = variances.idxmax()
+            insights.append(f"🔍 Maior variabilidade em **{col}**")
+            insights.append(f"📈 Valor máximo em {col}: **{numeric_cols[col].max():,.0f}**")
     
-    # Análise de nulos
-    nulos_pct = df.isnull().mean() * 100
-    cols_criticas = nulos_pct[nulos_pct > 50].count()
-    if cols_criticas > 0:
-        insights.append(f"⚠️ **Atenção:** {cols_criticas} colunas têm mais de 50% de dados ausentes.")
+    missing = df.isnull().mean().mul(100)
+    if (missing > 30).any():
+        insights.append("⚠️ Algumas colunas têm mais de 30% de valores ausentes")
     
     if not insights:
-        insights.append("ℹ️ Esta aba contém predominantemente metadados ou textos descritivos.")
-        
+        insights.append("✅ Nenhuma anomalia imediata detectada.")
     return insights
 
 # =========================
-# INTERFACE PRINCIPAL
+# APP PRINCIPAL
 # =========================
 def main():
     st.title("🌱 FAO Agrifood Carbon Market Dashboard")
-    
+
+    # ---------- LOAD ----------
     dataframes, sheets = load_data()
 
     if dataframes is None:
-        st.error("🚨 Erro: Arquivo 'Dataset.xlsx' não encontrado no diretório principal.")
-        st.markdown("Verifique se o arquivo está no seu repositório GitHub junto com o `main.py`.")
+        st.error("❌ Arquivo 'Dataset.xlsx' não encontrado no repositório!")
+        st.info("Certifique-se de que o arquivo está na raiz do seu GitHub com o nome exato.")
         st.stop()
 
-    # --- SIDEBAR ---
+    # ---------- SIDEBAR ----------
     with st.sidebar:
         st.header("📂 Navegação")
-        selected_sheet = st.selectbox("Escolha a aba do Excel:", sheets)
-        
-        st.divider()
-        st.header("⚙️ Filtros de Visualização")
-        hide_empty = st.checkbox("Ocultar colunas vazias", value=True)
-        show_summary = st.toggle("Visão Geral do Projeto", True)
+        selected_sheet = st.selectbox("Selecione a aba:", sheets)
+        st.markdown("---")
+        st.header("🚀 Ferramentas")
+        show_summary = st.toggle("📊 Visão Geral do Dataset", True)
+        show_insights = st.toggle("🧠 Insights Automáticos", True)
 
-    # --- VISÃO GERAL ---
+    # ---------- VISÃO GERAL ----------
     if show_summary:
-        with st.expander("📊 Estatísticas do Dataset Completo", expanded=False):
-            total_rows = sum(len(d) for d in dataframes.values())
-            total_sheets = len(sheets)
-            
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Total de Linhas", f"{total_rows:,}")
-            c2.metric("Total de Abas", total_sheets)
-            c3.metric("Status do Arquivo", "Online ✅")
+        st.subheader("📊 Visão Geral do Dataset")
+        rows, cols, numeric, fill = dataset_overview(dataframes)
 
-    # --- PROCESSAMENTO DA ABA SELECIONADA ---
-    df = dataframes[selected_sheet].copy()
-    
-    if hide_empty:
-        df = df.dropna(axis=1, how='all')
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Total de Registros", f"{rows:,}")
+        c2.metric("Total de Colunas", cols)
+        c3.metric("Colunas Numéricas", numeric)
+        c4.metric("Preenchimento Médio", f"{fill:.1f}%")
 
-    st.header(f"📄 Aba Atual: {selected_sheet}")
+        overview_list = []
+        for name, df in dataframes.items():
+            overview_list.append({
+                "Aba": name,
+                "Linhas": df.shape[0],
+                "Colunas": df.shape[1],
+                "% Nulos": round(df.isnull().mean().mean() * 100, 1)
+            })
+        st.table(pd.DataFrame(overview_list))
 
-    # Cards de Métricas Rápidas
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Linhas", df.shape[0])
-    m2.metric("Colunas Ativas", df.shape[1])
-    m3.metric("Colunas Numéricas", len(df.select_dtypes(include=np.number).columns))
-    m4.metric("Preenchimento", f"{(1 - df.isnull().mean().mean())*100:.1f}%")
+    # ---------- ABA SELECIONADA ----------
+    df = dataframes[selected_sheet]
+    st.divider()
+    st.header(f"📄 Aba: {selected_sheet}")
 
-    # --- TABS DE CONTEÚDO ---
-    tab_data, tab_viz, tab_export = st.tabs(["📋 Visualizar Dados", "📈 Exploração Visual", "💾 Exportar"])
+    # Insights
+    if show_insights:
+        with st.expander("🧠 Insights Rápidos", expanded=True):
+            for insight in smart_insights(df):
+                st.write(insight)
 
-    with tab_data:
-        st.subheader("Insights da Aba")
-        insights = get_smart_insights(df)
-        for text in insights:
-            st.markdown(f"- {text}")
-        
-        st.divider()
-        st.dataframe(df, use_container_width=True, height=400)
+    # TABS
+    tab1, tab2, tab3 = st.tabs(["📋 Dados", "📈 Exploração", "💾 Exportar"])
 
-    with tab_viz:
-        st.subheader("Análise Gráfica")
+    with tab1:
+        st.dataframe(df, use_container_width=True)
+
+    with tab2:
         num_cols = df.select_dtypes(include=np.number).columns.tolist()
-        
-        if len(num_cols) >= 1:
-            col_x = st.selectbox("Selecione a métrica:", num_cols)
-            fig = px.histogram(df, x=col_x, title=f"Distribuição de {col_x}", 
-                               color_discrete_sequence=['#2ecc71'], marginal="box")
+        if num_cols:
+            col_viz = st.selectbox("Escolha uma coluna numérica para ver a distribuição:", num_cols)
+            fig = px.histogram(df, x=col_viz, title=f"Distribuição de {col_viz}", color_discrete_sequence=['#2ecc71'])
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("Esta aba não possui dados numéricos suficientes para gerar gráficos.")
+            st.warning("Esta aba não possui dados numéricos para visualização.")
 
-    with tab_export:
-        st.subheader("Download dos Dados")
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="⬇️ Baixar aba atual como CSV",
-            data=csv,
-            file_name=f"fao_data_{selected_sheet.lower()}.csv",
-            mime="text/csv"
-        )
+    with tab3:
+        csv = df.to_csv(index=False).encode("utf-8")
+        st.download_button("⬇️ Baixar como CSV", csv, f"{selected_sheet}.csv", "text/csv")
 
-    st.divider()
-    st.caption(f"FAO Dashboard | Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    st.markdown("---")
+    st.caption(f"Última atualização: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 
 if __name__ == "__main__":
     main()
