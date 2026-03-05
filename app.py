@@ -3,9 +3,11 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 
-st.title("Dashboard de Vermicompostagem IoT")
+# layout largo
+st.set_page_config(layout="wide")
 
-st.write("Monitoramento de CH4, N2O e temperatura")
+st.title("🌱 Dashboard de Vermicompostagem IoT")
+st.write("Monitoramento de emissões de CH₄, N₂O e temperatura")
 
 dias = 50
 
@@ -16,19 +18,54 @@ dados = pd.DataFrame({
     "Temperatura": np.random.uniform(20, 30, dias)
 })
 
+st.subheader("📡 Leituras atuais dos sensores")
+
 col1, col2, col3 = st.columns(3)
 
-col1.metric("CH4 atual", f"{dados.CH4.iloc[-1]:.3f} mg m⁻² h⁻¹")
-col2.metric("N2O atual", f"{dados.N2O.iloc[-1]:.3f} mg m⁻² h⁻¹")
-col3.metric("Temperatura", f"{dados.Temperatura.iloc[-1]:.1f} °C")
+with col1:
+    st.metric(
+        label="CH₄ atual",
+        value=f"{dados.CH4.iloc[-1]:.4f} mg m⁻² h⁻¹"
+    )
 
-fig1 = px.line(dados, x="Dia", y=["CH4","N2O"], title="Emissões simuladas")
-st.plotly_chart(fig1)
+with col2:
+    st.metric(
+        label="N₂O atual",
+        value=f"{dados.N2O.iloc[-1]:.4f} mg m⁻² h⁻¹"
+    )
 
-fig2 = px.line(dados, x="Dia", y="Temperatura", title="Temperatura da vermicomposteira")
-st.plotly_chart(fig2)
+with col3:
+    st.metric(
+        label="Temperatura",
+        value=f"{dados.Temperatura.iloc[-1]:.1f} °C"
+    )
+
+st.divider()
+
+colA, colB = st.columns(2)
+
+with colA:
+    fig1 = px.line(
+        dados,
+        x="Dia",
+        y=["CH4","N2O"],
+        title="Emissões simuladas de CH₄ e N₂O"
+    )
+    st.plotly_chart(fig1, use_container_width=True)
+
+with colB:
+    fig2 = px.line(
+        dados,
+        x="Dia",
+        y="Temperatura",
+        title="Temperatura da vermicomposteira"
+    )
+    fig2.add_hline(y=35)
+    st.plotly_chart(fig2, use_container_width=True)
+
+st.divider()
 
 if dados.Temperatura.iloc[-1] > 35:
-    st.error("⚠ Temperatura acima do limite!")
+    st.error("⚠ Temperatura acima do limite recomendado")
 else:
-    st.success("Temperatura dentro da faixa ideal")
+    st.success("✅ Temperatura dentro da faixa ideal")
