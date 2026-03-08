@@ -3,20 +3,20 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-st.title("Vermicompost GHG Emissions Model")
+st.title("Vermicompost GHG Monitoring Prototype")
 
+# parâmetros da câmara
 st.header("Chamber parameters")
 
 area = st.number_input("Chamber area (m²)", value=0.13)
 
 flow = st.number_input("Sweep air flow (L/min)", value=5.0)
 
-Q = flow/1000
+Q = flow / 1000
 
 
-st.header("Gas sampling campaigns")
-
-gas_default = pd.DataFrame({
+# valores default do artigo
+default_data = pd.DataFrame({
 
 "Day":[0,3,7,14,21,30,45,60],
 
@@ -26,70 +26,55 @@ gas_default = pd.DataFrame({
 
 })
 
-gas_df = st.data_editor(gas_default)
+
+# manter dados durante a sessão
+if "data" not in st.session_state:
+
+    st.session_state.data = default_data.copy()
 
 
-st.header("Material samples")
+st.header("Gas measurements")
 
-mat_default = pd.DataFrame({
+df = st.data_editor(st.session_state.data)
 
-"Day":[0,30,60],
 
-"Mass kg":[100,75,60],
-
-"C %":[45,36,30],
-
-"N %":[2.0,2.4,2.8]
-
-})
-
-mat_df = st.data_editor(mat_default)
+st.session_state.data = df
 
 
 if st.button("Calculate emissions"):
 
-    gas_df["Flux_CH4"] = (gas_df["CH4 mg/m3"] * Q * 60) / area
+    df["Flux_CH4"] = (df["CH4 mg/m3"] * Q * 60) / area
 
-    gas_df["Flux_N2O"] = (gas_df["N2O mg/m3"] * Q * 60) / area
-
-
-    gas_df["CO2eq"] = gas_df["Flux_CH4"]*25 + gas_df["Flux_N2O"]*298
+    df["Flux_N2O"] = (df["N2O mg/m3"] * Q * 60) / area
 
 
-    st.subheader("Gas Flux")
+    # integração temporal
+    cum_ch4 = np.trapz(df["Flux_CH4"], df["Day"])
 
-    st.dataframe(gas_df)
-
-
-    mat_df["C_total"] = mat_df["Mass kg"] * mat_df["C %"] / 100
-
-    mat_df["N_total"] = mat_df["Mass kg"] * mat_df["N %"] / 100
+    cum_n2o = np.trapz(df["Flux_N2O"], df["Day"])
 
 
-    C0 = mat_df.loc[0,"C_total"]
+    st.subheader("Flux results")
 
-    N0 = mat_df.loc[0,"N_total"]
-
-
-    mat_df["C_loss"] = C0 - mat_df["C_total"]
-
-    mat_df["N_loss"] = N0 - mat_df["N_total"]
+    st.dataframe(df)
 
 
-    st.subheader("Material balance")
+    st.subheader("Cumulative emissions")
 
-    st.dataframe(mat_df)
+    st.write("CH4 cumulative emission:", cum_ch4)
+
+    st.write("N2O cumulative emission:", cum_n2o)
 
 
     fig, ax = plt.subplots()
 
-    ax.plot(gas_df["Day"], gas_df["Flux_CH4"], label="CH4")
+    ax.plot(df["Day"], df["Flux_CH4"], label="CH4")
 
-    ax.plot(gas_df["Day"], gas_df["Flux_N2O"], label="N2O")
+    ax.plot(df["Day"], df["Flux_N2O"], label="N2O")
 
     ax.set_xlabel("Days")
 
-    ax.set_ylabel("Flux (mg m⁻² h⁻¹)")
+    ax.set_ylabel("Flux mg m⁻² h⁻¹")
 
     ax.legend()
 
