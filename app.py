@@ -1,131 +1,210 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+import sqlite3
+from datetime import datetime
 import plotly.express as px
-import matplotlib.pyplot as plt
 
-# Configuração da página
-st.set_page_config(page_title="Vermi-IoT Sentinel - Gestão de GEE", layout="wide")
+# ==================== CONFIGURAÇÕES INICIAIS ====================
+st.set_page_config(page_title="VermiSense IoT", layout="wide")
+st.title("🌱 VermiSense – Monitoramento IoT de Emissões em Vermicompostagem")
+st.markdown("**Solução IoT para coleta automática de dados de CH₄ e N₂O em vermicomposteiras, com cálculo de emissões e impacto ambiental.**")
 
-## --- CABEÇALHO E ALINHAMENTO AO EDITAL ---
-st.title("🌱 Vermi-IoT Sentinel")
-st.subheader("Sistema de Monitoramento Remoto de Emissões GEE (ODS 12 e 13)")
-st.markdown(f"**Protótipo para o Edital CONIF/CONTIC nº 02/2026** [cite: 5, 6]")
+# ==================== CONEXÃO COM BANCO DE DADOS ====================
+conn = sqlite3.connect('vermisense.db', check_same_thread=False)
+c = conn.cursor()
 
-# ---- PAINEL LATERAL: PARÂMETROS TÉCNICOS (Obrigatórios para o cálculo) ----
+# Cria tabelas se não existirem (CORRIGIDO: adicionado EXISTS na tabela medicoes)
+c.execute('''CREATE TABLE IF NOT EXISTS dispositivos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome TEXT,
+                localizacao TEXT,
+                area_pilha REAL,
+                area_camara REAL,
+                vazao_ar REAL,
+                massa_inicial REAL,
+                umidade REAL,
+                toc REAL,
+                tn REAL,
+                gwp_ch4 INTEGER,
+                gwp_n2o INTEGER
+            )''')
+
+c.execute('''CREATE TABLE IF NOT EXISTS medicoes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dispositivo_id INTEGER,
+                timestamp DATETIME,
+                ch4 REAL,
+                n2o REAL,
+                FOREIGN KEY(dispositivo_id) REFERENCES dispositivos(id)
+            )''')
+conn.commit()
+
+# ==================== SIDEBAR: GERENCIAMENTO DE DISPOSITIVOS ====================
 with st.sidebar:
-    st.header("⚙️ Configurações da Unidade")
-    area_chamber = st.number_input("Área da câmara (m²)", value=0.13, format="%.2f")
-    flow_l_min = st.number_input("Vazão de arraste (L/min)", value=5.0, format="%.2f")
-    Q = flow_l_min / 1000  # m³/min
+    st.header("📡 Gerenciar Dispositivos IoT")
+    with st.expander("➕ Adicionar novo dispositivo"):
+        with st.form("form_dispositivo"):
+            nome = st.text_input("Nome do dispositivo", value="Vermicomposteira 1")
+            local = st.text_input("Localização", value="Setor A")
+            area_pilha = st.number_input("Área superficial da pilha (m²)", value=1.5)
+            area_camara = st.number_input("Área da câmara de fluxo (m²)", value=0.13)
+            vazao = st.number_input("Vazão de ar (L/min)", value=5.0)
+            massa = st.number_input("Massa inicial de resíduos (kg)", value=1500.0)
+            umidade = st.number_input("Umidade inicial (%)", value=50.8)
+            toc = st.number_input("Carbono orgânico total (%)", value=43.6)
+            tn = st.number_input("Nitrogênio total (g/kg)", value=14.2)
+            gwp_ch4 = st.number_input("GWP CH₄", value=25)
+            gwp_n2o = st.number_input("GWP N₂O", value=298)
+            submitted = st.form_submit_button("Salvar dispositivo")
+            if submitted:
+                c.execute('''INSERT INTO dispositivos 
+                            (nome, localizacao, area_pilha, area_camara, vazao_ar, massa_inicial, 
+                             umidade, toc, tn, gwp_ch4, gwp_n2o)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
+                          (nome, local, area_pilha, area_camara, vazao, massa, umidade, toc, tn, gwp_ch4, gwp_n2o))
+                conn.commit()
+                st.success("Dispositivo cadastrado!")
+
+    # Lista dispositivos existentes
+    dispositivos_df = pd.read_sql("SELECT id, nome, localizacao FROM dispositivos", conn)
+    if not dispositivos_df.empty:
+        st.subheader("📋 Dispositivos ativos")
+        st.dataframe(dispositivos_df, use_container_width=True)
+    else:
+        st.info("Nenhum dispositivo cadastrado. Adicione um para começar.")
+
+# ==================== SEÇÃO PRINCIPAL ====================
+if dispositivos_df.empty:
+    st.warning("Cadastre pelo menos um dispositivo no menu lateral para começar.")
+    st.stop()
+
+# Seleciona dispositivo para visualização
+dispositivo_id = st.selectbox("Selecione o dispositivo para monitorar", 
+                              options=dispositivos_df['id'].tolist(),
+                              format_func=lambda x: dispositivos_df[dispositivos_df['id']==x]['nome'].values[0])
+
+# Busca parâmetros do dispositivo selecionado
+params = pd.read_sql(f"SELECT * FROM dispositivos WHERE id = {dispositivo_id}", conn).iloc[0]
+
+# ==================== SIMULAÇÃO DE RECEBIMENTO AUTOMÁTICO DE DADOS ====================
+st.subheader("📲 Recebimento de dados IoT")
+st.markdown("**Simulação:** Cada clique no botão abaixo gera uma nova leitura dos sensores, como se os dados fossem enviados automaticamente via rede.")
+
+if st.button("📡 Receber nova medição automática"):
+    # Gera valores típicos (podem ser ajustados conforme necessidade)
+    novo_ch4 = np.random.normal(50, 20)  # mg/m³
+    novo_n2o = np.random.normal(3, 1)    # mg/m³
+    timestamp = datetime.now()
+    c.execute("INSERT INTO medicoes (dispositivo_id, timestamp, ch4, n2o) VALUES (?, ?, ?, ?)",
+              (dispositivo_id, timestamp, novo_ch4, novo_n2o))
+    conn.commit()
+    st.success(f"Nova medição registrada: CH₄ = {novo_ch4:.2f} mg/m³, N₂O = {novo_n2o:.2f} mg/m³")
+
+# ==================== VISUALIZAÇÃO DOS DADOS ====================
+st.subheader("📈 Histórico de medições")
+medicoes = pd.read_sql(f"SELECT timestamp, ch4, n2o FROM medicoes WHERE dispositivo_id = {dispositivo_id} ORDER BY timestamp", conn)
+if not medicoes.empty:
+    # Converte timestamp para datetime
+    medicoes['timestamp'] = pd.to_datetime(medicoes['timestamp'])
     
-    st.divider()
-    st.write("**Parâmetros da Pilha (Balanço de Massa)**")
-    initial_mass = st.number_input("Massa inicial de resíduos (kg)", value=1500.0)
-    moisture = st.number_input("Umidade (%)", value=50.8)
-    toc = st.number_input("Teor inicial de C total (%)", value=43.6)
-    tn = st.number_input("Teor inicial de N total (g kg⁻¹)", value=14.2)
+    # Filtro de data
+    min_date = medicoes['timestamp'].min().date()
+    max_date = medicoes['timestamp'].max().date()
+    col1, col2 = st.columns(2)
+    with col1:
+        data_inicio = st.date_input("Data inicial", min_date)
+    with col2:
+        data_fim = st.date_input("Data final", max_date)
     
-    st.divider()
-    st.write("**Fatores Globais (GWP)**")
-    gwp_ch4 = st.number_input("GWP CH₄", value=25)
-    gwp_n2o = st.number_input("GWP N₂O", value=298)
-
-# ---- ABA 1: CONECTIVIDADE E LEITURAS REMOTAS ----
-st.write("### 📡 Central de Recebimento de Dados (IoT)")
-st.info("Este módulo centraliza informações de equipamentos instalados em diferentes pontos da RFEPCT[cite: 9, 16].")
-
-def fetch_iot_readings():
-    """Simula a recepção automática de dados via conectividade"""
-    nodes = ["Nódulo-A (Campus)", "Nódulo-B (Rural)", "Nódulo-C (Laboratório)"]
-    schedule = [0, 3, 7, 14, 21, 30, 45, 50]
-    data_list = []
-    for node in nodes:
-        # Valores baseados na curva do artigo com variação randômica (ruído de sensor)
-        ch4_vals = [150.0, 100.0, 80.0, 50.0, 30.0, 20.0, 10.0, 5.0]
-        n2o_vals = [2.0, 4.0, 6.0, 5.0, 3.0, 2.0, 1.0, 0.5]
-        for i, day in enumerate(schedule):
-            data_list.append({
-                "day": day,
-                "node_id": node,
-                "CH4": ch4_vals[i] + np.random.normal(0, 3),
-                "N2O": n2o_vals[i] + np.random.normal(0, 0.1),
-                "timestamp": datetime.now() - timedelta(days=(50-day))
-            })
-    return pd.DataFrame(data_list)
-
-if "iot_data" not in st.session_state:
-    st.session_state.iot_data = pd.DataFrame()
-
-if st.button("🔄 Sincronizar Leituras dos Equipamentos Remotos"):
-    st.session_state.iot_data = fetch_iot_readings()
-    st.success("Dados sincronizados com sucesso via protocolo de conectividade!")
-
-df = st.session_state.iot_data.copy()
-
-if not df.empty:
-    # ---- CÁLCULOS TÉCNICOS DETALHADOS ----
-    # 1. Fluxos horários e diários
-    df["Flux_CH4_h"] = (df["CH4"] * Q * 60) / area_chamber
-    df["Flux_N2O_h"] = (df["N2O"] * Q * 60) / area_chamber
-    df["Flux_CH4_d"] = df["Flux_CH4_h"] * 24
-    df["Flux_N2O_d"] = df["Flux_N2O_h"] * 24
-
-    # 2. Integração Temporal por Nódulo (Área sob a curva)
-    nodes_summary = []
-    for node in df["node_id"].unique():
-        node_df = df[df["node_id"] == node].sort_values("day")
-        cum_ch4_mg = np.trapezoid(node_df["Flux_CH4_d"], node_df["day"])
-        cum_n2o_mg = np.trapezoid(node_df["Flux_N2O_d"], node_df["day"])
-        nodes_summary.append({
-            "node_id": node, 
-            "cum_ch4_mg_m2": cum_ch4_mg, 
-            "cum_n2o_mg_m2": cum_n2o_mg
-        })
+    medicoes_filtradas = medicoes[(medicoes['timestamp'].dt.date >= data_inicio) & 
+                                  (medicoes['timestamp'].dt.date <= data_fim)]
     
-    summary_df = pd.DataFrame(nodes_summary)
+    # Gráfico interativo com Plotly
+    fig = px.line(medicoes_filtradas, x='timestamp', y=['ch4', 'n2o'], 
+                  labels={'value':'Concentração (mg/m³)', 'timestamp':'Data', 'variable':'Gás'},
+                  title='Concentrações de CH₄ e N₂O ao longo do tempo')
+    st.plotly_chart(fig, use_container_width=True)
     
-    # 3. Balanço de Massa Médio da Planta
-    avg_ch4_mg_m2 = summary_df["cum_ch4_mg_m2"].mean()
-    avg_n2o_mg_m2 = summary_df["cum_n2o_mg_m2"].mean()
-    
-    # Extrapolação para a massa total
-    dry_matter = initial_mass * (1 - moisture/100)
-    initial_C_kg = dry_matter * (toc / 100)
-    initial_N_kg = (tn / 1000) * dry_matter
-    
-    total_ch4_kg = (avg_ch4_mg_m2 * 1.5) / 1e6 # 1.5m² área pilha
-    total_n2o_kg = (avg_n2o_mg_m2 * 1.5) / 1e6
-    
-    ch4_c_kg = total_ch4_kg * (12/16)
-    n2o_n_kg = total_n2o_kg * (28/44)
-    
-    ch4_c_perc = (ch4_c_kg / initial_C_kg) * 100
-    n2o_n_perc = (n2o_n_kg / initial_N_kg) * 100
-    
-    total_co2eq = (total_ch4_kg * gwp_ch4) + (total_n2o_kg * gwp_n2o)
-    ghg_per_ton = (total_co2eq / dry_matter) * 1000
-
-    # ---- ABA 2: VISUALIZAÇÃO E RESULTADOS ----
-    st.divider()
-    st.write("### 📊 Análise Consolidada das Emissões")
-    
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Perda CH₄-C", f"{ch4_c_perc:.3f}%")
-    m2.metric("Perda N₂O-N", f"{n2o_n_perc:.3f}%")
-    m3.metric("Total CO₂eq", f"{total_co2eq:.2f} kg")
-    m4.metric("Pegada GEE/t MS", f"{ghg_per_ton:.2f} kg")
-
-    # Gráficos
-    st.write("#### Monitoramento em Tempo Real por Ponto de Coleta")
-    fig_line = px.line(df, x="day", y="Flux_CH4_h", color="node_id", markers=True,
-                       title="Fluxo de Metano (mg/m².h) - Monitoramento Remoto")
-    st.plotly_chart(fig_line, use_container_width=True)
-
-    # Tabela de dados brutos para auditoria (Item 3.1.D do edital)
-    with st.expander("🔎 Ver Leituras de Sensores e Cálculos por Amostra"):
-        st.dataframe(df[["day", "node_id", "CH4", "N2O", "Flux_CH4_h", "Flux_N2O_h"]])
-
+    # Tabela com dados recentes
+    st.dataframe(medicoes_filtradas.sort_values('timestamp', ascending=False).head(10))
 else:
-    st.warning("Nenhum dado recebido. Clique no botão de sincronização para ler os equipamentos remotos.")
+    st.info("Nenhuma medição encontrada para este dispositivo.")
+
+# ==================== CÁLCULO DAS EMISSÕES ====================
+st.subheader("🌍 Cálculo de Emissões de GEE")
+if len(medicoes) < 2:
+    st.warning("São necessárias pelo menos duas medições para calcular fluxos e emissões.")
+else:
+    # Parâmetros do dispositivo
+    area_camara = params['area_camara']
+    vazao = params['vazao_ar'] / 1000  # m³/min
+    area_pilha = params['area_pilha']
+    massa_inicial = params['massa_inicial']
+    umidade = params['umidade']
+    toc = params['toc']
+    tn = params['tn']
+    gwp_ch4 = params['gwp_ch4']
+    gwp_n2o = params['gwp_n2o']
+    
+    # Preparar dados com fluxo diário
+    df = medicoes.copy()
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df = df.sort_values('timestamp')
+    df['dias'] = (df['timestamp'] - df['timestamp'].min()).dt.total_seconds() / (3600 * 24)
+    
+    # Cálculo do fluxo horário (mg/m²·h)
+    Q = vazao  # m³/min
+    df['flux_ch4_h'] = (df['ch4'] * Q * 60) / area_camara
+    df['flux_n2o_h'] = (df['n2o'] * Q * 60) / area_camara
+    
+    # Fluxo diário (mg/m²·dia)
+    df['flux_ch4_d'] = df['flux_ch4_h'] * 24
+    df['flux_n2o_d'] = df['flux_n2o_h'] * 24
+    
+    # Integração (mg/m²) usando regra do trapézio
+    cum_ch4_mg_m2 = np.trapz(df['flux_ch4_d'], df['dias'])
+    cum_n2o_mg_m2 = np.trapz(df['flux_n2o_d'], df['dias'])
+    
+    # Extrapolação para a pilha inteira
+    fator_extrapolacao = area_pilha / area_camara
+    cum_ch4_kg = cum_ch4_mg_m2 * area_camara / 1e6 * fator_extrapolacao
+    cum_n2o_kg = cum_n2o_mg_m2 * area_camara / 1e6 * fator_extrapolacao
+    
+    # Balanço de massa
+    materia_seca = massa_inicial * (1 - umidade/100)  # kg
+    carbono_inicial = materia_seca * (toc / 100)      # kg C
+    nitrogenio_inicial = (tn / 1000) * materia_seca   # kg N
+    
+    ch4_c_kg = cum_ch4_kg * (12/16)      # kg C
+    n2o_n_kg = cum_n2o_kg * (28/44)      # kg N
+    
+    perc_c = (ch4_c_kg / carbono_inicial * 100) if carbono_inicial > 0 else 0
+    perc_n = (n2o_n_kg / nitrogenio_inicial * 100) if nitrogenio_inicial > 0 else 0
+    
+    # CO2 equivalente
+    co2eq_ch4 = cum_ch4_kg * gwp_ch4
+    co2eq_n2o = cum_n2o_kg * gwp_n2o
+    total_co2eq = co2eq_ch4 + co2eq_n2o
+    co2eq_por_ton = (total_co2eq / materia_seca * 1000) if materia_seca > 0 else 0
+    
+    # Exibição dos resultados em colunas
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("CH₄ acumulado (kg)", f"{cum_ch4_kg:.4f}")
+        st.metric("N₂O acumulado (kg)", f"{cum_n2o_kg:.4f}")
+    with col2:
+        st.metric("Perda de C como CH₄ (%)", f"{perc_c:.3f}%")
+        st.metric("Perda de N como N₂O (%)", f"{perc_n:.3f}%")
+    with col3:
+        st.metric("Total CO₂eq (kg)", f"{total_co2eq:.2f}")
+        st.metric("CO₂eq por tonelada MS", f"{co2eq_por_ton:.2f} kg/t")
+    
+    # Comparação com referência do artigo (opcional)
+    st.caption("🔍 Referência (Yang et al. 2017): CH₄-C: 0.13% | N₂O-N: 0.92% | GHG: 8.1 kg CO₂eq/t MS")
+
+# ==================== EXPORTAÇÃO DE DADOS ====================
+st.subheader("📤 Exportar Dados")
+if not medicoes.empty:
+    csv = medicoes.to_csv(index=False)
+    st.download_button("Baixar medições como CSV", data=csv, file_name=f"medicoes_{dispositivo_id}.csv")
