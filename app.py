@@ -29,39 +29,26 @@ with st.expander("📋 Comparação: o que o artigo mede vs. o que o app simula"
             "Tabela 3"
         ],
         "No aplicativo": [
-            "Inserimos concentração (mg/m³) → fluxo (mg/m²·h), cumulativo (mg/m²), kg CH₄, % C inicial",
-            "Inserimos concentração (mg/m³) → fluxo (mg/m²·h), cumulativo (mg/m²), kg N₂O, % N inicial",
+            "Inserimos concentração (mg/m³) → fluxo (mg/m²·h) e cumulativo (mg/m²)",
+            "Inserimos concentração (mg/m³) → fluxo (mg/m²·h) e cumulativo (mg/m²)",
             "❌ Não implementado",
             "❌ Não implementado",
             "❌ Não implementado",
             "❌ Não implementado",
-            "✅ Calculado a partir das emissões totais"
+            "✅ Calculado a partir das emissões totais (kg CO₂-eq/t MS)"
         ]
     })
     st.dataframe(comparacao, hide_index=True)
 
-# ---- Parâmetros da câmara e do experimento ----
 st.header("Experiment setup")
-col1, col2 = st.columns(2)
-with col1:
-    area = st.number_input("Chamber area (m²)", value=0.13, format="%.2f")
-    flow = st.number_input("Sweep air flow (L/min)", value=5.0, format="%.2f")
-    Q = flow / 1000  # m³/min
-with col2:
-    total_days = st.number_input("Total experiment duration (days)", value=50, format="%d")
-    start_date = st.date_input("Experiment start date", value=datetime.now())
+area = st.number_input("Chamber area (m²)", value=0.13, format="%.2f")
+flow = st.number_input("Sweep air flow (L/min)", value=5.0, format="%.2f")
+start_date = st.date_input("Experiment start date", value=datetime.now())
+Q = flow / 1000  # L/min → m³/min
 
-# ---- Parâmetros da pilha de compostagem (baseados no artigo) ----
-st.header("Pile parameters (based on Table 1 & 3)")
-col3, col4 = st.columns(2)
-with col3:
-    initial_mass = st.number_input("Initial waste mass (kg)", value=1500.0, format="%.1f")
-    moisture = st.number_input("Moisture content (%)", value=50.8, format="%.1f")
-    toc = st.number_input("Initial TOC content (%)", value=43.6, format="%.1f")
-with col4:
-    tn = st.number_input("Initial TN content (g kg⁻¹)", value=14.2, format="%.1f")
-    gwp_ch4 = st.number_input("GWP CH₄ (100-yr)", value=25, format="%d")
-    gwp_n2o = st.number_input("GWP N₂O (100-yr)", value=298, format="%d")
+# NOVO: Área total da pilha (para extrapolação)
+pile_area = st.number_input("Pile top area (m²)", value=1.5, format="%.2f",
+                            help="Área da superfície da pilha (ex: 1,5 m² para o reator do artigo)")
 
 # Dias de medição (baseado no artigo)
 schedule = [0, 3, 7, 14, 21, 30, 45, 60]
@@ -74,6 +61,7 @@ if "data" not in st.session_state:
 
 # ---- Botão para carregar dados exatos do artigo ----
 if st.button("📥 Carregar dados exatos do artigo (Figuras 2A e 2B)"):
+    # Valores aproximados extraídos visualmente dos gráficos do artigo
     dias = schedule
     ch4_vals = [0.82, 0.58, 0.41, 0.29, 0.21, 0.12, 0.06, 0.02]   # mg/m³
     n2o_vals = [0.14, 0.24, 0.31, 0.27, 0.19, 0.11, 0.07, 0.04]   # mg/m³
@@ -88,6 +76,8 @@ if st.button("📥 Carregar dados exatos do artigo (Figuras 2A e 2B)"):
 
 st.header("Register measurement")
 day = st.selectbox("Sampling day", schedule)
+
+# Valores default mais próximos do artigo (primeiros dias)
 ch4_default = 0.80
 n2o_default = 0.15
 ch4 = st.number_input("CH4 (mg/m³)", value=ch4_default, format="%.2f")
@@ -106,6 +96,15 @@ if st.button("Save measurement"):
     )
     st.success("Measurement saved")
 
+# --- Parâmetros da pilha (para cálculos de balanço) ---
+st.header("Pile parameters (based on Table 1 & 3)")
+initial_mass = st.number_input("Initial waste mass (kg)", value=1500.0, format="%.1f")
+moisture = st.number_input("Moisture content (%)", value=50.8, format="%.1f")
+toc = st.number_input("Initial TOC content (%)", value=43.6, format="%.1f")
+tn = st.number_input("Initial TN content (g kg⁻¹)", value=14.2, format="%.1f")
+gwp_ch4 = st.number_input("GWP CH₄ (100-yr)", value=25, format="%d")
+gwp_n2o = st.number_input("GWP N₂O (100-yr)", value=298, format="%d")
+
 # --- Processamento e visualização ---
 data = st.session_state.data.copy()
 
@@ -115,13 +114,10 @@ if not data.empty and all(col in data.columns for col in ["CH4", "N2O"]):
     data["Flux_N2O"] = (data["N2O"] * Q * 60) / area
     data = data.sort_values("day").reset_index(drop=True)
 
-    # Integração temporal (cumulativo em mg/m²)
+    # Integração temporal (cumulativo em mg/m²) – CORREÇÃO: multiplicar por 24 h/dia
     if len(data) > 1:
-        data["cum_CH4_mg_m2"] = np.trapezoid(data["Flux_CH4"], data["day"])
-        data["cum_N2O_mg_m2"] = np.trapezoid(data["Flux_N2O"], data["day"])
-    else:
-        data["cum_CH4_mg_m2"] = np.nan
-        data["cum_N2O_mg_m2"] = np.nan
+        data["cum_CH4_mgm2"] = np.trapezoid(data["Flux_CH4"], data["day"]) * 24
+        data["cum_N2O_mgm2"] = np.trapezoid(data["Flux_N2O"], data["day"]) * 24
 
     st.subheader("📊 Measurements")
     st.dataframe(data)
@@ -136,56 +132,51 @@ if not data.empty and all(col in data.columns for col in ["CH4", "N2O"]):
     ax.grid(True)
     st.pyplot(fig)
 
-    # ---- Cálculos baseados na planilha Excel ----
-    st.subheader("📈 Total emissions (based on your Excel logic)")
+    # Métricas cumulativas por área da câmara
+    if len(data) > 1:
+        st.metric("Emissão cumulativa de CH₄ (mg/m²)", f"{data['cum_CH4_mgm2'].iloc[-1]:.2f}")
+        st.metric("Emissão cumulativa de N₂O (mg/m²)", f"{data['cum_N2O_mgm2'].iloc[-1]:.2f}")
 
-    # 1. Calcular a massa seca e os estoques iniciais de C e N
-    dry_matter = initial_mass * (1 - moisture/100)  # kg DM
-    initial_C_mass = dry_matter * (toc / 100)       # kg C
-    initial_N_mass = (tn / 1000) * dry_matter       # kg N
+        # --- NOVOS CÁLCULOS: extrapolação para a pilha inteira e balanço de C/N ---
+        # Emissão total na pilha (kg)
+        total_ch4_kg = data['cum_CH4_mgm2'].iloc[-1] * pile_area / 1e6
+        total_n2o_kg = data['cum_N2O_mgm2'].iloc[-1] * pile_area / 1e6
 
-    # 2. Fatores de conversão
-    ch4_to_c = 12/16          # kg C por kg CH₄
-    n2o_to_n = 28/44          # kg N por kg N₂O
+        # Massa seca (kg) e em toneladas
+        dry_mass_kg = initial_mass * (1 - moisture / 100)
+        dry_mass_t = dry_mass_kg / 1000
 
-    # 3. Obter os cumulativos finais (em mg/m²)
-    cum_ch4_mg_m2 = data["cum_CH4_mg_m2"].iloc[-1] if len(data) > 1 else 0
-    cum_n2o_mg_m2 = data["cum_N2O_mg_m2"].iloc[-1] if len(data) > 1 else 0
+        # Carbono e nitrogênio iniciais (kg)
+        C_initial_kg = dry_mass_kg * (toc / 100)
+        N_initial_kg = dry_mass_kg * (tn / 1000)   # TN em g/kg
 
-    # Converter mg/m² para kg (multiplicar pela área e dividir por 1e6)
-    cum_ch4_kg = cum_ch4_mg_m2 * area / 1e6
-    cum_n2o_kg = cum_n2o_mg_m2 * area / 1e6
+        # Perdas percentuais (CH4-C e N2O-N)
+        ch4_c_kg = total_ch4_kg * (12 / 16)
+        n2o_n_kg = total_n2o_kg * (28 / 44)
+        perc_C_loss = (ch4_c_kg / C_initial_kg * 100) if C_initial_kg != 0 else 0
+        perc_N_loss = (n2o_n_kg / N_initial_kg * 100) if N_initial_kg != 0 else 0
 
-    # 4. Calcular a massa de C e N perdida
-    ch4_c_kg = cum_ch4_kg * ch4_to_c
-    n2o_n_kg = cum_n2o_kg * n2o_to_n
+        # Total GHG (kg CO2-eq) e GHG por tonelada de MS
+        total_ghg = total_ch4_kg * gwp_ch4 + total_n2o_kg * gwp_n2o
+        ghg_per_ton = total_ghg / dry_mass_t if dry_mass_t != 0 else 0
 
-    # 5. Percentuais em relação ao inicial
-    ch4_c_percent = (ch4_c_kg / initial_C_mass) * 100 if initial_C_mass > 0 else 0
-    n2o_n_percent = (n2o_n_kg / initial_N_mass) * 100 if initial_N_mass > 0 else 0
+        st.subheader("📈 Total emissions (based on your Excel logic)")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("CH₄-C loss (% of initial C)", f"{perc_C_loss:.2f}%")
+            st.metric("Total CH₄ emitted (kg)", f"{total_ch4_kg:.3f}")
+        with col2:
+            st.metric("N₂O-N loss (% of initial N)", f"{perc_N_loss:.2f}%")
+            st.metric("Total N₂O emitted (kg)", f"{total_n2o_kg:.3f}")
+        with col3:
+            st.metric("Total GHG (kg CO₂-eq)", f"{total_ghg:.1f}")
+            st.metric("GHG per ton DM (kg CO₂-eq/t)", f"{ghp_per_ton:.1f}")
 
-    # 6. Emissões totais em kg CO₂-eq
-    ch4_co2eq = cum_ch4_kg * gwp_ch4
-    n2o_co2eq = cum_n2o_kg * gwp_n2o
-    total_ghg = ch4_co2eq + n2o_co2eq
-    ghg_per_t_dm = (total_ghg / dry_matter) * 1000 if dry_matter > 0 else 0  # kg CO₂-eq / t DM
-
-    # 7. Exibir resultados
-    col5, col6, col7 = st.columns(3)
-    with col5:
-        st.metric("CH₄-C loss (% of initial C)", f"{ch4_c_percent:.2f}%")
-        st.metric("N₂O-N loss (% of initial N)", f"{n2o_n_percent:.2f}%")
-    with col6:
-        st.metric("Total CH₄ emitted (kg)", f"{cum_ch4_kg:.3f}")
-        st.metric("Total N₂O emitted (kg)", f"{cum_n2o_kg:.3f}")
-    with col7:
-        st.metric("Total GHG (kg CO₂-eq)", f"{total_ghg:.1f}")
-        st.metric("GHG per ton DM (kg CO₂-eq/t)", f"{ghg_per_t_dm:.1f}")
-
-    # Comparação com a Tabela 3 (valores do artigo)
-    st.caption("🔍 Comparação com a Tabela 3 do artigo (vermicompostagem):")
-    st.caption("CH₄-C: 0.13% | N₂O-N: 0.92% | GHG total: 8.1 kg CO₂-eq/t DM")
-    st.caption("Seus valores podem diferir porque dependem da área, vazão e massa da pilha.")
-
+        # Comparação com a Tabela 3 do artigo
+        st.markdown("🔍 **Comparação com a Tabela 3 do artigo (vermicompostagem):**")
+        st.markdown("CH₄-C: 0.13% | N₂O-N: 0.92% | GHG total: 8.1 kg CO₂-eq/t DM")
+        st.caption("Seus valores podem diferir porque dependem da área da pilha, vazão, massa e da amostragem.")
+    else:
+        st.info("Registre pelo menos duas medições para visualizar os totais.")
 else:
     st.info("Nenhuma medição registrada ainda. Use o formulário acima ou carregue os dados de exemplo.")
