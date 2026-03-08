@@ -14,7 +14,7 @@ st.markdown("**Solução IoT para coleta automática de dados de CH₄ e N₂O e
 conn = sqlite3.connect('vermisense.db', check_same_thread=False)
 c = conn.cursor()
 
-# Cria tabelas se não existirem (CORRIGIDO: adicionado EXISTS na tabela medicoes)
+# Cria tabelas se não existirem (corrigido)
 c.execute('''CREATE TABLE IF NOT EXISTS dispositivos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 nome TEXT,
@@ -162,9 +162,9 @@ else:
     df['flux_ch4_d'] = df['flux_ch4_h'] * 24
     df['flux_n2o_d'] = df['flux_n2o_h'] * 24
     
-    # Integração (mg/m²) usando regra do trapézio
-    cum_ch4_mg_m2 = np.trapz(df['flux_ch4_d'], df['dias'])
-    cum_n2o_mg_m2 = np.trapz(df['flux_n2o_d'], df['dias'])
+    # Integração (mg/m²) usando regra do trapézio (corrigido: trapezoid)
+    cum_ch4_mg_m2 = np.trapezoid(df['flux_ch4_d'], df['dias'])
+    cum_n2o_mg_m2 = np.trapezoid(df['flux_n2o_d'], df['dias'])
     
     # Extrapolação para a pilha inteira
     fator_extrapolacao = area_pilha / area_camara
