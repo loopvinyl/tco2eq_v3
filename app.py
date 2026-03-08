@@ -1,76 +1,96 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+from datetime import datetime
 import matplotlib.pyplot as plt
 
 st.title("Vermicompost GHG Monitoring Prototype")
 
-# parâmetros da câmara
-st.header("Chamber parameters")
+st.header("Experiment setup")
 
 area = st.number_input("Chamber area (m²)", value=0.13)
 
 flow = st.number_input("Sweep air flow (L/min)", value=5.0)
 
-Q = flow / 1000
+start_date = st.date_input("Experiment start date")
+
+Q = flow/1000
 
 
-# valores default do artigo
-default_data = pd.DataFrame({
+# dias de medição
+schedule = [0,3,7,14,21,30,45,60]
 
-"Day":[0,3,7,14,21,30,45,60],
+st.header("Sampling schedule")
 
-"CH4 mg/m3":[2.1,2.5,3.2,4.5,4.0,3.5,3.0,2.4],
-
-"N2O mg/m3":[0.8,1.0,1.2,1.5,1.3,1.1,1.0,0.9]
-
-})
+st.write(schedule)
 
 
-# manter dados durante a sessão
+# banco de dados em memória
 if "data" not in st.session_state:
 
-    st.session_state.data = default_data.copy()
+    st.session_state.data = pd.DataFrame(
+        columns=["day","CH4","N2O","timestamp"]
+    )
 
 
-st.header("Gas measurements")
+st.header("Register measurement")
 
-df = st.data_editor(st.session_state.data)
+day = st.selectbox("Sampling day", schedule)
+
+ch4 = st.number_input("CH4 mg/m3")
+
+n2o = st.number_input("N2O mg/m3")
 
 
-st.session_state.data = df
+if st.button("Save measurement"):
+
+    new = pd.DataFrame({
+
+        "day":[day],
+        "CH4":[ch4],
+        "N2O":[n2o],
+        "timestamp":[datetime.now()]
+
+    })
+
+    st.session_state.data = pd.concat(
+        [st.session_state.data,new],
+        ignore_index=True
+    )
+
+    st.success("Measurement saved")
 
 
-if st.button("Calculate emissions"):
+data = st.session_state.data
 
-    df["Flux_CH4"] = (df["CH4 mg/m3"] * Q * 60) / area
 
-    df["Flux_N2O"] = (df["N2O mg/m3"] * Q * 60) / area
+if len(data) > 0:
+
+    data["Flux_CH4"] = (data["CH4"] * Q * 60) / area
+
+    data["Flux_N2O"] = (data["N2O"] * Q * 60) / area
+
+    data = data.sort_values("day")
 
 
     # integração temporal
-    cum_ch4 = np.trapz(df["Flux_CH4"], df["Day"])
+    if len(data) > 1:
 
-    cum_n2o = np.trapz(df["Flux_N2O"], df["Day"])
+        data["cum_CH4"] = np.trapz(data["Flux_CH4"], data["day"])
 
-
-    st.subheader("Flux results")
-
-    st.dataframe(df)
+        data["cum_N2O"] = np.trapz(data["Flux_N2O"], data["day"])
 
 
-    st.subheader("Cumulative emissions")
+    st.subheader("Measurements")
 
-    st.write("CH4 cumulative emission:", cum_ch4)
-
-    st.write("N2O cumulative emission:", cum_n2o)
+    st.dataframe(data)
 
 
     fig, ax = plt.subplots()
 
-    ax.plot(df["Day"], df["Flux_CH4"], label="CH4")
+    ax.plot(data["day"], data["Flux_CH4"], label="CH4")
 
-    ax.plot(df["Day"], df["Flux_N2O"], label="N2O")
+    ax.plot(data["day"], data["Flux_N2O"], label="N2O")
 
     ax.set_xlabel("Days")
 
