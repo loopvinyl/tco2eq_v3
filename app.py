@@ -10,6 +10,7 @@ import plotly.express as px
 from datetime import datetime, timedelta
 import time
 import os
+import socket
 
 # Configuração da página
 st.set_page_config(page_title="Vermi-IoT Sentinel - Sensor Integration", layout="wide")
@@ -74,23 +75,33 @@ def integrate_emissions(df):
 
 def simulate_sensor_reading():
     """Gera uma leitura simulada baseada nas curvas do artigo com ruído."""
-    # Curva típica: CH4 começa alto e diminui; N2O tem pico no meio
-    base_day = (datetime.now() - st.session_state.last_update).days
-    # Para simulação, usamos uma função que varia com o tempo
+    # Usa o tempo decorrido desde a primeira leitura para simular dias
+    if st.session_state.sensor_data.empty:
+        base_day = 0
+    else:
+        first_time = st.session_state.sensor_data["timestamp"].min()
+        base_day = (datetime.now() - first_time).total_seconds() / 86400
+    
+    # Curva do artigo: CH4 decai exponencialmente; N2O tem pico por volta do dia 15
     ch4_base = 150 * np.exp(-0.1 * base_day) + 5
     n2o_base = 6 * np.sin(base_day / 10) + 2
     ch4 = max(0, ch4_base + np.random.normal(0, 3))
     n2o = max(0, n2o_base + np.random.normal(0, 0.2))
     return ch4, n2o
 
-def read_serial_sensor(port, baudrate):
-    """
-    Placeholder para leitura real de sensor via serial.
-    Deve retornar (ch4_mg_m3, n2o_mg_m3) ou (None, None) em caso de erro.
-    """
-    # Aqui você implementaria a comunicação com o sensor real
-    # Por enquanto, retorna valores simulados
-    return simulate_sensor_reading()
+def read_tcp_sensor(host, port):
+    """Lê uma linha de dados do sensor via TCP."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(5)
+            s.connect((host, port))
+            data = s.recv(1024).decode().strip()
+            if data:
+                ch4_str, n2o_str = data.split(',')
+                return float(ch4_str), float(n2o_str)
+    except Exception as e:
+        st.error(f"Erro na leitura TCP: {e}")
+    return None, None
 
 # ---- Abas principais ----
 tab1, tab2, tab3, tab4 = st.tabs(["📡 Monitoramento em Tempo Real", 
@@ -102,9 +113,10 @@ with tab1:
     st.header("Leitura em Tempo Real dos Sensores")
     st.markdown("**Sensor acoplado à câmara de fluxo (Nutriwash System)**")
     
-    # Exibir imagem do sistema (se disponível)
-    if os.path.exists("Nutriwash_System.png"):
-        st.image("Nutriwash_System.png", caption="Diagrama do sistema Nutriwash", width=600)
+    # Exibir imagem do sistema (procurando na mesma pasta)
+    image_path = "Nutriwash_System.png"  # imagem na mesma pasta do app.py
+    if os.path.exists(image_path):
+        st.image(image_path, caption="Diagrama do sistema Nutriwash", width=600)
     else:
         st.info("ℹ️ Para visualizar o diagrama, coloque a imagem 'Nutriwash_System.png' no mesmo diretório do script.")
     
@@ -134,22 +146,33 @@ with tab1:
     
     with col2:
         st.subheader("Última Leitura")
-        # Se a leitura contínua estiver ativa, atualiza a cada 2 segundos (simulado)
-        if st.session_state.sensor_active:
-            # Em um app real, você faria a leitura em loop, mas Streamlit não suporta atualização automática sem rerun
-            # Vamos simular uma leitura a cada clique em um botão "Atualizar"
-            if st.button("🔄 Atualizar Leitura"):
-                # Simular leitura do sensor (ou real via serial)
+        # Botão para atualizar leitura (simulada ou TCP)
+        if st.button("🔄 Atualizar Leitura"):
+            # Verifica o tipo de sensor configurado
+            sensor_type = st.session_state.get("sensor_type", "Simulado")
+            if sensor_type == "TCP/IP":
+                host = st.session_state.get("tcp_host", "localhost")
+                port = st.session_state.get("tcp_port", 5000)
+                ch4, n2o = read_tcp_sensor(host, port)
+                if ch4 is None or n2o is None:
+                    st.error("Falha na leitura TCP. Usando simulação interna.")
+                    ch4, n2o = simulate_sensor_reading()
+                    source = "simulado (fallback)"
+                else:
+                    source = "tcp"
+            else:
                 ch4, n2o = simulate_sensor_reading()
-                new_row = pd.DataFrame({
-                    "timestamp": [datetime.now()],
-                    "CH4_mg_m3": [ch4],
-                    "N2O_mg_m3": [n2o],
-                    "source": ["sensor"]
-                })
-                st.session_state.sensor_data = pd.concat([st.session_state.sensor_data, new_row], ignore_index=True)
-                st.session_state.last_update = datetime.now()
-                st.rerun()
+                source = "simulado"
+            
+            new_row = pd.DataFrame({
+                "timestamp": [datetime.now()],
+                "CH4_mg_m3": [ch4],
+                "N2O_mg_m3": [n2o],
+                "source": [source]
+            })
+            st.session_state.sensor_data = pd.concat([st.session_state.sensor_data, new_row], ignore_index=True)
+            st.session_state.last_update = datetime.now()
+            st.rerun()
         
         # Exibir a última medição
         if not st.session_state.sensor_data.empty:
@@ -251,30 +274,25 @@ with tab2:
 
 with tab3:
     st.header("Configurações dos Sensores")
-    st.markdown("Ajuste os parâmetros de comunicação com os sensores reais.")
+    st.markdown("Ajuste os parâmetros de comunicação com os sensores reais ou virtuais.")
     
-    col_s1, col_s2 = st.columns(2)
-    with col_s1:
-        sensor_type = st.selectbox("Tipo de Sensor", ["Simulado", "Serial (Modbus)", "Analogico (DAQ)"])
-        if sensor_type == "Serial (Modbus)":
-            port = st.text_input("Porta COM", value="/dev/ttyUSB0")
-            baudrate = st.selectbox("Baud rate", [9600, 19200, 38400, 115200], index=0)
-            st.info("Conecte o sensor e clique em 'Testar Conexão'")
-            if st.button("Testar Conexão"):
-                st.success("Conexão bem-sucedida (simulação)")
-        elif sensor_type == "Analogico (DAQ)":
-            channel = st.number_input("Canal", value=0)
-            st.info("Configure o hardware de aquisição")
-        else:
-            st.info("Usando sensor simulado (dados gerados aleatoriamente com base no artigo).")
+    # Armazenar configurações na sessão
+    sensor_type = st.selectbox("Tipo de Sensor", ["Simulado", "TCP/IP"], 
+                               index=0, key="sensor_type")
     
-    with col_s2:
-        st.subheader("Calibração")
-        ch4_offset = st.number_input("Offset CH₄ (mg/m³)", value=0.0)
-        ch4_gain = st.number_input("Ganho CH₄", value=1.0)
-        n2o_offset = st.number_input("Offset N₂O (mg/m³)", value=0.0)
-        n2o_gain = st.number_input("Ganho N₂O", value=1.0)
-        st.caption("Os valores lidos serão ajustados: valor = (raw * gain) + offset")
+    if sensor_type == "TCP/IP":
+        st.subheader("Configuração TCP")
+        tcp_host = st.text_input("Host", value="localhost", key="tcp_host")
+        tcp_port = st.number_input("Porta", value=5000, min_value=1, max_value=65535, key="tcp_port")
+        st.info("Certifique-se de que o sensor virtual (sensor_virtual.py) esteja rodando e acessível.")
+    
+    st.divider()
+    st.subheader("Calibração (opcional)")
+    ch4_offset = st.number_input("Offset CH₄ (mg/m³)", value=0.0)
+    ch4_gain = st.number_input("Ganho CH₄", value=1.0)
+    n2o_offset = st.number_input("Offset N₂O (mg/m³)", value=0.0)
+    n2o_gain = st.number_input("Ganho N₂O", value=1.0)
+    st.caption("Os valores lidos serão ajustados: valor = (raw * gain) + offset (não implementado no código atual).")
     
     # Botão para exportar dados
     st.divider()
@@ -307,10 +325,8 @@ with tab4:
     **Diagrama do Sistema:** O diagrama Nutriwash mostra a câmara de fluxo sobre o leito de vermicompostagem, com minhocas separadas e extração de húmus/líquido.
     """)
     
-    # Exibir imagem novamente
+    # Exibir imagem novamente (se existir)
     if os.path.exists("Nutriwash_System.png"):
         st.image("Nutriwash_System.png", caption="Nutriwash System", width=500)
     else:
         st.info("ℹ️ Para visualizar o diagrama, coloque a imagem 'Nutriwash_System.png' no mesmo diretório do script.")
-    
-    st.markdown("**Desenvolvido por:** [Seu Nome/Equipe]")
