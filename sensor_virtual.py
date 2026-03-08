@@ -1,37 +1,44 @@
 import socket
 import time
+import random
 import numpy as np
-from datetime import datetime
 
-HOST = '0.0.0.0'  # Aceita conexões de qualquer IP
+# Configurações de Rede
+HOST = 'localhost'
 PORT = 5000
-INTERVAL = 60  # segundos entre leituras (ajustável)
 
-# Parâmetros da simulação baseada no artigo (Figura 2)
-def gerar_leitura(t):
-    dias = t / 86400  # t em segundos
-    # CH4: começa ~150 mg/m³, decai exponencialmente
-    ch4 = 150 * np.exp(-0.1 * dias) + 5 + np.random.normal(0, 3)
-    # N2O: pico em torno de 10-20 dias
-    n2o = 6 * np.sin(dias / 10) + 2 + np.random.normal(0, 0.2)
-    return max(0, ch4), max(0, n2o)
+def gerar_dados_artigo(segundo):
+    """Simula a curva de Yang et al. (2017) baseada no tempo"""
+    dia = segundo / 10  # Acelera o tempo para teste (10s = 1 dia)
+    
+    # CH4 decai com o tempo
+    ch4 = 150 * np.exp(-0.1 * dia) + random.uniform(2, 8)
+    # N2O tem picos no meio do processo
+    n2o = 6 * np.abs(np.sin(dia / 5)) + random.uniform(0.1, 0.5)
+    
+    return round(ch4, 2), round(n2o, 2)
 
-def main():
+def iniciar_sensor():
+    # Cria o socket TCP/IP
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((HOST, PORT))
         s.listen()
-        print(f"Sensor virtual aguardando conexões em {HOST}:{PORT}")
-        conn, addr = s.accept()
-        with conn:
-            print(f"Conectado por {addr}")
-            inicio = time.time()
-            while True:
-                t = time.time() - inicio
-                ch4, n2o = gerar_leitura(t)
-                linha = f"{ch4:.2f},{n2o:.2f}\n"
-                conn.sendall(linha.encode())
-                print(f"Enviado: {linha.strip()}")
-                time.sleep(INTERVAL)
+        print(f"📡 Sensor Virtual Ativo em {HOST}:{PORT}")
+        print("Aguardando conexão do Dashboard...")
+        
+        tempo_inicio = time.time()
+        
+        while True:
+            conn, addr = s.accept()
+            with conn:
+                # Gera os dados
+                tempo_decorrido = time.time() - tempo_inicio
+                ch4, n2o = gerar_dados_artigo(tempo_decorrido)
+                
+                # Formata como string "CH4,N2O"
+                mensagem = f"{ch4},{n2o}"
+                conn.sendall(mensagem.encode())
+                print(f"📤 Dados enviados para {addr}: {mensagem}")
 
 if __name__ == "__main__":
-    main()
+    iniciar_sensor()
