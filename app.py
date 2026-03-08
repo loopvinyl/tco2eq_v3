@@ -1,100 +1,95 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import datetime
 import matplotlib.pyplot as plt
 
-st.title("Vermicompost GHG Monitoring Prototype")
+st.title("Vermicompost GHG Emissions Model")
 
-st.header("Experiment setup")
+st.header("Chamber parameters")
 
 area = st.number_input("Chamber area (m²)", value=0.13)
 
 flow = st.number_input("Sweep air flow (L/min)", value=5.0)
 
-start_date = st.date_input("Experiment start date")
-
 Q = flow/1000
 
 
-# dias de medição
-schedule = [0,3,7,14,21,30,45,60]
+st.header("Gas sampling campaigns")
 
-st.header("Sampling schedule")
+gas_default = pd.DataFrame({
 
-st.write(schedule)
+"Day":[0,3,7,14,21,30,45,60],
 
+"CH4 mg/m3":[2.1,2.5,3.2,4.5,4.0,3.5,3.0,2.4],
 
-# banco de dados em memória
-if "data" not in st.session_state:
+"N2O mg/m3":[0.8,1.0,1.2,1.5,1.3,1.1,1.0,0.9]
 
-    st.session_state.data = pd.DataFrame(
-        columns=["day","CH4","N2O","timestamp"]
-    )
+})
 
-
-st.header("Register measurement")
-
-day = st.selectbox("Sampling day", schedule)
-
-ch4 = st.number_input("CH4 mg/m3")
-
-n2o = st.number_input("N2O mg/m3")
+gas_df = st.data_editor(gas_default)
 
 
-if st.button("Save measurement"):
+st.header("Material samples")
 
-    new = pd.DataFrame({
+mat_default = pd.DataFrame({
 
-        "day":[day],
-        "CH4":[ch4],
-        "N2O":[n2o],
-        "timestamp":[datetime.now()]
+"Day":[0,30,60],
 
-    })
+"Mass kg":[100,75,60],
 
-    st.session_state.data = pd.concat(
-        [st.session_state.data,new],
-        ignore_index=True
-    )
+"C %":[45,36,30],
 
-    st.success("Measurement saved")
+"N %":[2.0,2.4,2.8]
+
+})
+
+mat_df = st.data_editor(mat_default)
 
 
-data = st.session_state.data
+if st.button("Calculate emissions"):
+
+    gas_df["Flux_CH4"] = (gas_df["CH4 mg/m3"] * Q * 60) / area
+
+    gas_df["Flux_N2O"] = (gas_df["N2O mg/m3"] * Q * 60) / area
 
 
-if len(data) > 0:
-
-    data["Flux_CH4"] = (data["CH4"] * Q * 60) / area
-
-    data["Flux_N2O"] = (data["N2O"] * Q * 60) / area
-
-    data = data.sort_values("day")
+    gas_df["CO2eq"] = gas_df["Flux_CH4"]*25 + gas_df["Flux_N2O"]*298
 
 
-    # integração temporal
-    if len(data) > 1:
+    st.subheader("Gas Flux")
 
-        data["cum_CH4"] = np.trapz(data["Flux_CH4"], data["day"])
-
-        data["cum_N2O"] = np.trapz(data["Flux_N2O"], data["day"])
+    st.dataframe(gas_df)
 
 
-    st.subheader("Measurements")
+    mat_df["C_total"] = mat_df["Mass kg"] * mat_df["C %"] / 100
 
-    st.dataframe(data)
+    mat_df["N_total"] = mat_df["Mass kg"] * mat_df["N %"] / 100
+
+
+    C0 = mat_df.loc[0,"C_total"]
+
+    N0 = mat_df.loc[0,"N_total"]
+
+
+    mat_df["C_loss"] = C0 - mat_df["C_total"]
+
+    mat_df["N_loss"] = N0 - mat_df["N_total"]
+
+
+    st.subheader("Material balance")
+
+    st.dataframe(mat_df)
 
 
     fig, ax = plt.subplots()
 
-    ax.plot(data["day"], data["Flux_CH4"], label="CH4")
+    ax.plot(gas_df["Day"], gas_df["Flux_CH4"], label="CH4")
 
-    ax.plot(data["day"], data["Flux_N2O"], label="N2O")
+    ax.plot(gas_df["Day"], gas_df["Flux_N2O"], label="N2O")
 
     ax.set_xlabel("Days")
 
-    ax.set_ylabel("Flux mg m⁻² h⁻¹")
+    ax.set_ylabel("Flux (mg m⁻² h⁻¹)")
 
     ax.legend()
 
