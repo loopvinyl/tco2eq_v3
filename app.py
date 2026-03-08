@@ -65,10 +65,10 @@ if not data.empty and all(col in data.columns for col in ["CH4", "N2O"]):
     data["Flux_N2O"] = (data["N2O"] * Q * 60) / area
     data = data.sort_values("day").reset_index(drop=True)
 
-    # Integração temporal (cumulativo)
+    # Integração temporal (cumulativo) usando numpy.trapezoid (compatível com NumPy 2.0+)
     if len(data) > 1:
-        data["cum_CH4"] = np.trapz(data["Flux_CH4"], data["day"])
-        data["cum_N2O"] = np.trapz(data["Flux_N2O"], data["day"])
+        data["cum_CH4"] = np.trapezoid(data["Flux_CH4"], data["day"])
+        data["cum_N2O"] = np.trapezoid(data["Flux_N2O"], data["day"])
 
     st.subheader("Measurements")
     st.dataframe(data)
