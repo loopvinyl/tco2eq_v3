@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-st.title("Vermicompost Emissions Model")
+st.title("Vermicompost GHG Emissions Model")
 
 st.header("Chamber parameters")
 
@@ -22,9 +22,7 @@ gas_default = pd.DataFrame({
 
 "CH4 mg/m3":[2.1,2.5,3.2,4.5,4.0,3.5,3.0,2.4],
 
-"N2O mg/m3":[0.8,1.0,1.2,1.5,1.3,1.1,1.0,0.9],
-
-"NH3 mg/m3":[5.5,6.0,6.3,7.0,6.5,6.0,5.8,5.5]
+"N2O mg/m3":[0.8,1.0,1.2,1.5,1.3,1.1,1.0,0.9]
 
 })
 
@@ -54,7 +52,8 @@ if st.button("Calculate emissions"):
 
     gas_df["Flux_N2O"] = (gas_df["N2O mg/m3"] * Q * 60) / area
 
-    gas_df["Flux_NH3"] = (gas_df["NH3 mg/m3"] * Q * 60) / area
+
+    gas_df["CO2eq"] = gas_df["Flux_CH4"]*25 + gas_df["Flux_N2O"]*298
 
 
     st.subheader("Gas Flux")
@@ -87,8 +86,6 @@ if st.button("Calculate emissions"):
     ax.plot(gas_df["Day"], gas_df["Flux_CH4"], label="CH4")
 
     ax.plot(gas_df["Day"], gas_df["Flux_N2O"], label="N2O")
-
-    ax.plot(gas_df["Day"], gas_df["Flux_NH3"], label="NH3")
 
     ax.set_xlabel("Days")
 
