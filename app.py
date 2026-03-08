@@ -5,70 +5,95 @@ import matplotlib.pyplot as plt
 
 st.title("Vermicompost Emissions Model")
 
-st.header("Chamber Parameters")
+st.header("Chamber parameters")
 
 area = st.number_input("Chamber area (m²)", value=0.13)
+
 flow = st.number_input("Sweep air flow (L/min)", value=5.0)
 
-Q = flow / 1000
+Q = flow/1000
 
-st.header("Gas Sampling Campaigns")
 
-days_gas = [0,3,7,14,21,30,45,60]
+st.header("Gas sampling campaigns")
 
-gas_data = pd.DataFrame({
-    "Day":days_gas,
-    "CH4 mg/m3":[0.0]*8,
-    "N2O mg/m3":[0.0]*8,
-    "NH3 mg/m3":[0.0]*8
+gas_default = pd.DataFrame({
+
+"Day":[0,3,7,14,21,30,45,60],
+
+"CH4 mg/m3":[2.1,2.5,3.2,4.5,4.0,3.5,3.0,2.4],
+
+"N2O mg/m3":[0.8,1.0,1.2,1.5,1.3,1.1,1.0,0.9],
+
+"NH3 mg/m3":[5.5,6.0,6.3,7.0,6.5,6.0,5.8,5.5]
+
 })
 
-gas_df = st.data_editor(gas_data)
+gas_df = st.data_editor(gas_default)
 
-st.header("Material Samples")
 
-days_material = [0,30,60]
+st.header("Material samples")
 
-mat_data = pd.DataFrame({
-    "Day":days_material,
-    "Mass kg":[0.0]*3,
-    "C %":[0.0]*3,
-    "N %":[0.0]*3
+mat_default = pd.DataFrame({
+
+"Day":[0,30,60],
+
+"Mass kg":[100,75,60],
+
+"C %":[45,36,30],
+
+"N %":[2.0,2.4,2.8]
+
 })
 
-mat_df = st.data_editor(mat_data)
+mat_df = st.data_editor(mat_default)
+
 
 if st.button("Calculate emissions"):
 
     gas_df["Flux_CH4"] = (gas_df["CH4 mg/m3"] * Q * 60) / area
+
     gas_df["Flux_N2O"] = (gas_df["N2O mg/m3"] * Q * 60) / area
+
     gas_df["Flux_NH3"] = (gas_df["NH3 mg/m3"] * Q * 60) / area
+
 
     st.subheader("Gas Flux")
 
     st.dataframe(gas_df)
 
+
     mat_df["C_total"] = mat_df["Mass kg"] * mat_df["C %"] / 100
+
     mat_df["N_total"] = mat_df["Mass kg"] * mat_df["N %"] / 100
 
+
     C0 = mat_df.loc[0,"C_total"]
+
     N0 = mat_df.loc[0,"N_total"]
 
+
     mat_df["C_loss"] = C0 - mat_df["C_total"]
+
     mat_df["N_loss"] = N0 - mat_df["N_total"]
 
-    st.subheader("Material Balance")
+
+    st.subheader("Material balance")
 
     st.dataframe(mat_df)
+
 
     fig, ax = plt.subplots()
 
     ax.plot(gas_df["Day"], gas_df["Flux_CH4"], label="CH4")
+
     ax.plot(gas_df["Day"], gas_df["Flux_N2O"], label="N2O")
+
     ax.plot(gas_df["Day"], gas_df["Flux_NH3"], label="NH3")
 
     ax.set_xlabel("Days")
-    ax.set_ylabel("Flux (mg m-2 h-1)")
+
+    ax.set_ylabel("Flux (mg m⁻² h⁻¹)")
+
     ax.legend()
 
     st.pyplot(fig)
