@@ -1,61 +1,74 @@
 import streamlit as st
-import numpy as np
 import pandas as pd
-import plotly.express as px
-import time
+import numpy as np
+import matplotlib.pyplot as plt
 
-st.set_page_config(layout="wide")
+st.title("Vermicompost Emissions Model")
 
-st.title("🌱 Dashboard de Vermicompostagem IoT")
-st.write("Monitoramento de emissões de CH₄, N₂O e temperatura")
+st.header("Chamber Parameters")
 
-dias = 50
+area = st.number_input("Chamber area (m²)", value=0.13)
+flow = st.number_input("Sweep air flow (L/min)", value=5.0)
 
-# gerar dados simulados
-dados = pd.DataFrame({
-    "Dia": range(1, dias+1),
-    "CH4": np.random.uniform(0.01, 0.20, dias),
-    "N2O": np.random.uniform(0.10, 0.60, dias),
-    "Temperatura": np.random.uniform(20, 30, dias)
+Q = flow / 1000
+
+st.header("Gas Sampling Campaigns")
+
+days_gas = [0,3,7,14,21,30,45,60]
+
+gas_data = pd.DataFrame({
+    "Day":days_gas,
+    "CH4 mg/m3":[0.0]*8,
+    "N2O mg/m3":[0.0]*8,
+    "NH3 mg/m3":[0.0]*8
 })
 
-st.subheader("📡 Leituras atuais dos sensores")
+gas_df = st.data_editor(gas_data)
 
-col1, col2, col3 = st.columns(3)
+st.header("Material Samples")
 
-col1.metric("CH₄ atual", f"{dados.CH4.iloc[-1]:.4f} mg m⁻² h⁻¹")
-col2.metric("N₂O atual", f"{dados.N2O.iloc[-1]:.4f} mg m⁻² h⁻¹")
-col3.metric("Temperatura", f"{dados.Temperatura.iloc[-1]:.1f} °C")
+days_material = [0,30,60]
 
-st.divider()
+mat_data = pd.DataFrame({
+    "Day":days_material,
+    "Mass kg":[0.0]*3,
+    "C %":[0.0]*3,
+    "N %":[0.0]*3
+})
 
-colA, colB = st.columns(2)
+mat_df = st.data_editor(mat_data)
 
-with colA:
-    fig1 = px.line(
-        dados,
-        x="Dia",
-        y=["CH4","N2O"],
-        title="Emissões simuladas de CH₄ e N₂O"
-    )
-    st.plotly_chart(fig1, use_container_width=True)
+if st.button("Calculate emissions"):
 
-with colB:
-    fig2 = px.line(
-        dados,
-        x="Dia",
-        y="Temperatura",
-        title="Temperatura da vermicomposteira"
-    )
-    fig2.add_hline(y=35)
-    st.plotly_chart(fig2, use_container_width=True)
+    gas_df["Flux_CH4"] = (gas_df["CH4 mg/m3"] * Q * 60) / area
+    gas_df["Flux_N2O"] = (gas_df["N2O mg/m3"] * Q * 60) / area
+    gas_df["Flux_NH3"] = (gas_df["NH3 mg/m3"] * Q * 60) / area
 
-st.divider()
+    st.subheader("Gas Flux")
 
-st.subheader("📊 Dados simulados dos sensores")
-st.dataframe(dados)
+    st.dataframe(gas_df)
 
-if dados.Temperatura.iloc[-1] > 35:
-    st.error("⚠ Temperatura acima do limite recomendado")
-else:
-    st.success("✅ Temperatura dentro da faixa ideal")
+    mat_df["C_total"] = mat_df["Mass kg"] * mat_df["C %"] / 100
+    mat_df["N_total"] = mat_df["Mass kg"] * mat_df["N %"] / 100
+
+    C0 = mat_df.loc[0,"C_total"]
+    N0 = mat_df.loc[0,"N_total"]
+
+    mat_df["C_loss"] = C0 - mat_df["C_total"]
+    mat_df["N_loss"] = N0 - mat_df["N_total"]
+
+    st.subheader("Material Balance")
+
+    st.dataframe(mat_df)
+
+    fig, ax = plt.subplots()
+
+    ax.plot(gas_df["Day"], gas_df["Flux_CH4"], label="CH4")
+    ax.plot(gas_df["Day"], gas_df["Flux_N2O"], label="N2O")
+    ax.plot(gas_df["Day"], gas_df["Flux_NH3"], label="NH3")
+
+    ax.set_xlabel("Days")
+    ax.set_ylabel("Flux (mg m-2 h-1)")
+    ax.legend()
+
+    st.pyplot(fig)
