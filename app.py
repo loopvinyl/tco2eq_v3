@@ -5,6 +5,10 @@ import os
 
 st.title("Monitoramento de Gases - Vermicompostagem")
 
+# -----------------------------
+# Escolha do GWP
+# -----------------------------
+
 st.subheader("Configuração do cálculo climático")
 
 gwp_option = st.selectbox(
@@ -17,7 +21,6 @@ gwp_option = st.selectbox(
     ]
 )
 
-# Valores de GWP
 if gwp_option == "Yang et al. (GWP-100 clássico)":
     GWP_CH4 = 25
     GWP_N2O = 298
@@ -37,7 +40,10 @@ elif gwp_option == "IPCC AR6 - GWP500":
 
 arquivo = "dados_emissoes.csv"
 
-# Criar CSV exemplo se não existir
+# -----------------------------
+# Criar CSV exemplo
+# -----------------------------
+
 if not os.path.exists(arquivo):
 
     dados_exemplo = pd.DataFrame({
@@ -71,7 +77,10 @@ if not os.path.exists(arquivo):
     dados_exemplo.to_csv(arquivo,index=False)
 
 
-# Ler CSV
+# -----------------------------
+# Ler dados
+# -----------------------------
+
 dados = pd.read_csv(arquivo)
 
 dados["timestamp"] = pd.to_datetime(dados["timestamp"])
@@ -126,6 +135,39 @@ dados["N2O_acum_g"] = dados["N2O_g"].cumsum()
 st.subheader("Massa acumulada de gases")
 
 st.line_chart(dados[["CH4_acum_g","N2O_acum_g"]])
+
+
+# -----------------------------
+# Perda de elementos (Yang)
+# -----------------------------
+
+st.subheader("Perda de Carbono e Nitrogênio")
+
+C_inicial = st.number_input("Carbono inicial do material (g)",value=1000.0)
+N_inicial = st.number_input("Nitrogênio inicial do material (g)",value=100.0)
+
+dados["C_perdido_g"] = dados["CH4_g"] * (12/16)
+dados["N_perdido_g"] = dados["N2O_g"] * (28/44)
+
+dados["C_perdido_acum_g"] = dados["C_perdido_g"].cumsum()
+dados["N_perdido_acum_g"] = dados["N_perdido_g"].cumsum()
+
+dados["C_loss_percent"] = (dados["C_perdido_acum_g"] / C_inicial) * 100
+dados["N_loss_percent"] = (dados["N_perdido_acum_g"] / N_inicial) * 100
+
+st.subheader("Evolução da perda percentual")
+
+st.line_chart(dados[["C_loss_percent","N_loss_percent"]])
+
+C_loss_final = dados["C_loss_percent"].iloc[-1]
+N_loss_final = dados["N_loss_percent"].iloc[-1]
+
+st.subheader("Perda total acumulada")
+
+col1, col2 = st.columns(2)
+
+col1.metric("Perda de C via CH4 (%)",f"{C_loss_final:.3f}")
+col2.metric("Perda de N via N2O (%)",f"{N_loss_final:.3f}")
 
 
 # -----------------------------
