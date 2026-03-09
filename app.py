@@ -22,13 +22,11 @@ M_N = 14.01                    # g/mol
 # ============================================================
 # CARREGAMENTO DOS DADOS (FIXO)
 # ============================================================
-st.sidebar.header("Configurações")
-
 # Carrega diretamente o arquivo CSV (deve estar na mesma pasta)
 try:
     dados = pd.read_csv('dados_yang_fluxo_continuo.csv', parse_dates=['timestamp'])
     dados.set_index('timestamp', inplace=True)
-    st.sidebar.success("Arquivo 'dados_yang_fluxo_continuo.csv' carregado!")
+    st.success("Arquivo 'dados_yang_fluxo_continuo.csv' carregado!")
 except FileNotFoundError:
     st.error("Arquivo 'dados_yang_fluxo_continuo.csv' não encontrado. Certifique-se de que ele está na mesma pasta do app.")
     st.stop()
@@ -38,11 +36,14 @@ st.subheader("Visualização dos dados")
 st.write(dados.head())
 
 # ============================================================
-# PARÂMETROS DA CÂMARA (EXISTENTES) - AGORA COM VALORES DO ARTIGO
+# PARÂMETROS DA CÂMARA (AGORA NA ÁREA PRINCIPAL)
 # ============================================================
-st.sidebar.subheader("Parâmetros da câmara")
-area_camara = st.sidebar.number_input("Área da base da câmara (m²)", value=0.13, step=0.01)
-volume_camara = st.sidebar.number_input("Volume da câmara (m³)", value=VOLUME_CAMARA, step=0.01)
+st.subheader("Parâmetros da câmara")
+col1, col2 = st.columns(2)
+with col1:
+    area_camara = st.number_input("Área da base da câmara (m²)", value=0.13, step=0.01)
+with col2:
+    volume_camara = st.number_input("Volume da câmara (m³)", value=VOLUME_CAMARA, step=0.01)
 
 # ============================================================
 # SEÇÃO 1: CÁLCULO DE MASSA E CONCENTRAÇÃO (EXISTENTE)
@@ -166,6 +167,9 @@ for dia, grupo in dados.groupby('data'):
     })
 
 df_fluxos = pd.DataFrame(fluxos_dia).sort_values('data')
+# Converter a coluna 'data' para datetime (era object)
+df_fluxos['data'] = pd.to_datetime(df_fluxos['data'])
+
 st.write("Fluxos calculados por dia de medição:")
 st.dataframe(df_fluxos)
 st.line_chart(df_fluxos.set_index('data')[['fluxo_CH4_mg', 'fluxo_N2O_mg']])
@@ -187,11 +191,15 @@ else:
     # Área do reator (valor fixo do artigo, pode ser parametrizado)
     area_reator = 1.5  # m²
     
-    # Recalcular intervalos entre medições (como na seção 6)
+    # Recalcular intervalos entre medições (como na seção 6) garantindo tipos datetime
     df_fluxos = df_fluxos.copy()
     df_fluxos['data_prox'] = df_fluxos['data'].shift(-1)
+    # Converter data_prox para datetime (evitar problemas com NaT)
+    df_fluxos['data_prox'] = pd.to_datetime(df_fluxos['data_prox'])
+    
+    # Calcular diferença em dias usando .dt.days (agora colunas são datetime)
     df_fluxos['intervalo_dias'] = (df_fluxos['data_prox'] - df_fluxos['data']).dt.days
-    # Para o último dia, assumir intervalo igual à mediana dos anteriores
+    # Para o último dia (onde data_prox é NaT), preencher com a mediana
     ultimo_intervalo = df_fluxos['intervalo_dias'].median()
     df_fluxos.loc[df_fluxos.index[-1], 'intervalo_dias'] = ultimo_intervalo
     
@@ -247,6 +255,7 @@ if st.checkbox("Calcular emissões acumuladas (necessário área do reator e int
     # Estimar intervalos entre medições (dias consecutivos)
     df_fluxos = df_fluxos.copy()
     df_fluxos['data_prox'] = df_fluxos['data'].shift(-1)
+    df_fluxos['data_prox'] = pd.to_datetime(df_fluxos['data_prox'])
     df_fluxos['intervalo_dias'] = (df_fluxos['data_prox'] - df_fluxos['data']).dt.days
     # Para o último dia, assumir intervalo igual à mediana dos anteriores
     ultimo_intervalo = df_fluxos['intervalo_dias'].median()
