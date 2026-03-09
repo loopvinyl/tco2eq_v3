@@ -13,7 +13,7 @@ st.markdown("---")
 
 # Constantes
 R = 8.314                     # J/(mol·K)
-VOLUME_CAMARA = 0.07          # m³ (valor padrão, ajustável)
+VOLUME_CAMARA = 0.03          # m³ (valor do artigo: 30 L)
 M_CH4 = 16.04                  # g/mol
 M_N2O = 44.01                  # g/mol
 M_C = 12.01                    # g/mol
@@ -38,10 +38,10 @@ st.subheader("Visualização dos dados")
 st.write(dados.head())
 
 # ============================================================
-# PARÂMETROS DA CÂMARA (EXISTENTES)
+# PARÂMETROS DA CÂMARA (EXISTENTES) - AGORA COM VALORES DO ARTIGO
 # ============================================================
 st.sidebar.subheader("Parâmetros da câmara")
-area_camara = st.sidebar.number_input("Área da base da câmara (m²)", value=0.07, step=0.01)
+area_camara = st.sidebar.number_input("Área da base da câmara (m²)", value=0.13, step=0.01)
 volume_camara = st.sidebar.number_input("Volume da câmara (m³)", value=VOLUME_CAMARA, step=0.01)
 
 # ============================================================
@@ -253,6 +253,8 @@ if st.checkbox("Calcular emissões acumuladas (necessário área do reator e int
     st.write(f"**Yang et al. (2017):** 0,92%")
     
     # GEE por tonelada de MS
+    GWP_CH4 = 25
+    GWP_N2O = 298
     CO2eq_CH4 = total_CH4_kg * GWP_CH4
     CO2eq_N2O = total_N2O_kg * GWP_N2O
     CO2eq_total = CO2eq_CH4 + CO2eq_N2O
