@@ -33,7 +33,7 @@ st.subheader("Visualização dos dados")
 st.write(dados.head())
 
 # ============================================================
-# PARÂMETROS DA CÂMARA (AGORA NA ÁREA PRINCIPAL)
+# PARÂMETROS DA CÂMARA (ÚNICA DEFINIÇÃO)
 # ============================================================
 st.subheader("Parâmetros da câmara")
 col1, col2 = st.columns(2)
@@ -108,15 +108,22 @@ st.markdown("""
 col1, col2, col3 = st.columns(3)
 with col1:
     Q_sw = st.number_input("Vazão de ar de arraste (L/min)", value=5.0, step=0.1)
-    area_camara_yang = st.number_input("Área da câmara (m²)", value=0.13, step=0.01, key="area_yang")
+    # Área da câmara já definida nos parâmetros gerais, usaremos a mesma
+    area_camara_yang = area_camara
+    st.write(f"Área da câmara (usada): **{area_camara_yang} m²**")
 with col2:
     usar_Q_ad = st.checkbox("Usar vazão adicional (Q_ad)")
-    Q_ad = st.number_input("Q_ad (L/min)", value=0.0, step=0.1) if usar_Q_ad else 0.0
+    if usar_Q_ad:
+        Q_ad = st.number_input("Q_ad (L/min)", value=0.0, step=0.1)
+    else:
+        Q_ad = 0.0
 with col3:
     st.info("Concentrações em ppm convertidas usando P e T médios.")
 
-Q_total_m3h = (Q_sw + Q_ad) * 60 / 1000  # L/min → m³/h
+# Converter vazão para m³/h
+Q_total_m3h = (Q_sw + Q_ad) * 60 / 1000
 
+# Calcular fluxo diário (agrupar por dia)
 dados['data'] = dados.index.date
 fluxos_dia = []
 
@@ -140,6 +147,7 @@ for dia, grupo in dados.groupby('data'):
     })
 
 df_fluxos = pd.DataFrame(fluxos_dia).sort_values('data')
+# Converter a coluna 'data' para datetime
 df_fluxos['data'] = pd.to_datetime(df_fluxos['data'])
 
 st.write("Fluxos calculados por dia de medição:")
@@ -160,11 +168,11 @@ if df_fluxos.empty:
 else:
     area_reator = 1.5  # m² (valor fixo do artigo)
     
-    # Calcula intervalos entre medições (em dias)
+    # Recalcular intervalos entre medições (dias)
     df_temp = df_fluxos.copy()
     df_temp['data_prox'] = df_temp['data'].shift(-1)
     df_temp['intervalo_dias'] = (df_temp['data_prox'] - df_temp['data']).dt.days
-    # Último intervalo: usar a mediana dos anteriores
+    # Para o último dia, preencher com a mediana
     ultimo_intervalo = df_temp['intervalo_dias'].median()
     df_temp.loc[df_temp.index[-1], 'intervalo_dias'] = ultimo_intervalo
     
