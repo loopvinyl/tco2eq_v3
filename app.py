@@ -7,146 +7,175 @@ from datetime import datetime
 # ============================================================
 # CONFIGURAÇÕES INICIAIS
 # ============================================================
-st.set_page_config(page_title="Analisador de Emissões - Vermicompostagem", layout="wide")
-st.title("📊 Análise de Emissões de Gases em Vermicompostagem")
-st.markdown("Aplicativo para cálculo de emissões de CH₄ e N₂O, perda de C/N, CO₂ equivalente e fluxo pelos métodos científico e de Yang et al. (2017)")
+st.set_page_config(layout="wide")
+st.title("Analisador de Emissões em Vermicompostagem")
+st.markdown("---")
 
-# Constantes universais
-R = 8.314                     # Constante dos gases (J/mol·K)
-VOLUME_CAMARA = 0.03          # m³ (calibrado para o artigo Yang)
-M_CH4 = 16.04                 # g/mol
-M_N2O = 44.01                 # g/mol
-GWP_CH4 = 25                  # IPCC 100 anos
-GWP_N2O = 298
+# Constantes
+R = 8.314                     # J/(mol·K)
+VOLUME_CAMARA = 0.07          # m³ (valor padrão, ajustável)
+M_CH4 = 16.04                  # g/mol
+M_N2O = 44.01                  # g/mol
+M_C = 12.01                    # g/mol
+M_N = 14.01                    # g/mol
 
 # ============================================================
-# SIDEBAR - CARREGAMENTO DE DADOS E PARÂMETROS
+# CARREGAMENTO DOS DADOS
 # ============================================================
-st.sidebar.header("1. Carregar dados")
-uploaded_file = st.sidebar.file_uploader("Escolha um arquivo CSV", type="csv")
-
-if uploaded_file is not None:
-    dados = pd.read_csv(uploaded_file, parse_dates=['timestamp'])
+st.sidebar.header("Configurações")
+arquivo = st.sidebar.file_uploader("Escolha o arquivo CSV", type=['csv'])
+if arquivo is not None:
+    dados = pd.read_csv(arquivo, parse_dates=['timestamp'])
     dados.set_index('timestamp', inplace=True)
-    dados.sort_index(inplace=True)
-
-    st.sidebar.success("Arquivo carregado com sucesso!")
-    st.sidebar.write(f"Número de linhas: {len(dados)}")
-    st.sidebar.write(f"Período: {dados.index.min().date()} a {dados.index.max().date()}")
-
-    # Mostrar amostra dos dados
-    with st.expander("Prévia dos dados carregados"):
-        st.dataframe(dados.head(10))
+    st.sidebar.success("Arquivo carregado!")
 else:
-    st.warning("Por favor, carregue um arquivo CSV no formato adequado.")
-    st.stop()
+    st.sidebar.warning("Usando arquivo padrão 'dados_yang_fluxo_continuo.csv'")
+    try:
+        dados = pd.read_csv('dados_yang_fluxo_continuo.csv', parse_dates=['timestamp'])
+        dados.set_index('timestamp', inplace=True)
+    except FileNotFoundError:
+        st.error("Arquivo padrão não encontrado. Faça o upload de um arquivo CSV.")
+        st.stop()
 
-# Parâmetros gerais (podem ser ajustados pelo usuário)
-st.sidebar.header("2. Parâmetros da câmara")
-area_camara = st.sidebar.number_input("Área da base da câmara (m²)", value=0.13, step=0.01, format="%.2f")
-# Para o método de Yang, também precisamos da vazão de ar (pode ser definida depois)
-
-st.sidebar.header("3. Parâmetros do experimento")
-massa_seca_total = st.sidebar.number_input("Massa seca total (kg)", value=375.0, help="Estimativa para reator de 1,5 m³")
-teor_c_inicial = st.sidebar.number_input("Teor de C inicial (% MS)", value=43.6, step=0.1)
-teor_n_inicial = st.sidebar.number_input("Teor de N inicial (% MS)", value=1.42, step=0.01)
-area_reator = st.sidebar.number_input("Área da base do reator (m²)", value=1.5, help="Usada para integrar fluxos e obter emissão total")
+# Mostrar primeiras linhas
+st.subheader("Visualização dos dados")
+st.write(dados.head())
 
 # ============================================================
-# VISUALIZAÇÃO DOS DADOS BRUTOS
+# PARÂMETROS DA CÂMARA (EXISTENTES)
 # ============================================================
-st.header("📈 Dados brutos de concentração")
-fig, ax = plt.subplots(2, 1, figsize=(10, 6))
-ax[0].plot(dados.index, dados['CH4_ppm'], color='green', marker='.', linestyle='-', markersize=2)
-ax[0].set_ylabel('CH₄ (ppm)')
-ax[0].grid(True)
-ax[1].plot(dados.index, dados['N2O_ppm'], color='blue', marker='.', linestyle='-', markersize=2)
-ax[1].set_ylabel('N₂O (ppm)')
-ax[1].grid(True)
-plt.xticks(rotation=45)
-st.pyplot(fig)
+st.sidebar.subheader("Parâmetros da câmara")
+area_camara = st.sidebar.number_input("Área da base da câmara (m²)", value=0.07, step=0.01)
+volume_camara = st.sidebar.number_input("Volume da câmara (m³)", value=VOLUME_CAMARA, step=0.01)
 
 # ============================================================
-# CÁLCULOS BÁSICOS: MASSA DE GÁS E PERDA DE C/N
+# SEÇÃO 1: CÁLCULO DE MASSA E CONCENTRAÇÃO (EXISTENTE)
 # ============================================================
-st.header("⚖️ Massa de gás e perda de C/N (baseado na concentração)")
+st.header("1. Massa de gás na câmara")
+# Converter ppm para fração molar
+dados['CH4_mol'] = dados['CH4_ppm'] * 1e-6
+dados['N2O_mol'] = dados['N2O_ppm'] * 1e-6
 
-# Usar média de P e T para os cálculos
+# Número de mols total na câmara (ar)
+# Usar P e T médios para simplificar
 P_media = dados['P_Pa'].mean()
 T_media = dados['T_K'].mean()
-st.write(f"Pressão média: {P_media:.0f} Pa | Temperatura média: {T_media:.2f} K")
+n_total = (P_media * volume_camara) / (R * T_media)   # mol
 
-# Fator de conversão ppm -> mol/m³
-mol_por_m3 = P_media / (R * T_media)   # mol/m³
+dados['massa_CH4_g'] = dados['CH4_mol'] * n_total * M_CH4
+dados['massa_N2O_g'] = dados['N2O_mol'] * n_total * M_N2O
 
-# Massa de cada gás na câmara em cada instante (kg)
-dados['massa_CH4_kg'] = dados['CH4_ppm'] * 1e-6 * mol_por_m3 * M_CH4 * VOLUME_CAMARA / 1000   # /1000 para kg
-dados['massa_N2O_kg'] = dados['N2O_ppm'] * 1e-6 * mol_por_m3 * M_N2O * VOLUME_CAMARA / 1000
-
-# Calcular perdas como diferença entre primeiro e último ponto (simplificado)
-massa_inicial_CH4 = dados['massa_CH4_kg'].iloc[0]
-massa_final_CH4 = dados['massa_CH4_kg'].iloc[-1]
-massa_inicial_N2O = dados['massa_N2O_kg'].iloc[0]
-massa_final_N2O = dados['massa_N2O_kg'].iloc[-1]
-
-st.write(f"Massa inicial CH₄: {massa_inicial_CH4:.6f} kg")
-st.write(f"Massa final CH₄: {massa_final_CH4:.6f} kg")
-st.write(f"Massa inicial N₂O: {massa_inicial_N2O:.6f} kg")
-st.write(f"Massa final N₂O: {massa_final_N2O:.6f} kg")
-
-# Perda de C e N (apenas a partir da diferença de massa; não é o método mais preciso)
-C_perdido_bruto = (massa_inicial_CH4 - massa_final_CH4) * (12/16) if massa_inicial_CH4 > massa_final_CH4 else 0
-N_perdido_bruto = (massa_inicial_N2O - massa_final_N2O) * (28/44) if massa_inicial_N2O > massa_final_N2O else 0
-st.write(f"**Perda bruta de C como CH₄:** {C_perdido_bruto:.6f} kg")
-st.write(f"**Perda bruta de N como N₂O:** {N_perdido_bruto:.6f} kg")
+st.line_chart(dados[['massa_CH4_g', 'massa_N2O_g']])
+st.write("Massa média CH4 (g):", round(dados['massa_CH4_g'].mean(), 4))
+st.write("Massa média N2O (g):", round(dados['massa_N2O_g'].mean(), 4))
 
 # ============================================================
-# CÁLCULO DE FLUXO - MÉTODO CIENTÍFICO (dC/dt)
+# SEÇÃO 2: PERDA DE CARBONO E NITROGÊNIO (EXISTENTE)
 # ============================================================
-st.header("🌀 Fluxo pelo método científico (dC/dt) - Câmara estática")
+st.header("2. Perda de C e N (base acumulada)")
+# Supor que a massa inicial do material é conhecida
+massa_inicial_kg = st.number_input("Massa inicial do material (kg)", value=500.0)
+teor_carbono_percent = st.number_input("Teor de carbono inicial (% massa seca)", value=43.6)
+teor_nitrogenio_percent = st.number_input("Teor de nitrogênio inicial (% massa seca)", value=1.42)
 
-# Calcular diferenças de tempo e concentração
+# Carbono no CH4
+dados['C_perdido_g'] = dados['massa_CH4_g'] * (M_C / M_CH4)
+# Nitrogênio no N2O
+dados['N_perdido_g'] = dados['massa_N2O_g'] * (2 * M_N / M_N2O)
+
+C_total_inicial_g = massa_inicial_kg * 1000 * (teor_carbono_percent / 100)
+N_total_inicial_g = massa_inicial_kg * 1000 * (teor_nitrogenio_percent / 100)
+
+dados['perc_C_perdido'] = (dados['C_perdido_g'].cumsum() / C_total_inicial_g) * 100
+dados['perc_N_perdido'] = (dados['N_perdido_g'].cumsum() / N_total_inicial_g) * 100
+
+st.line_chart(dados[['perc_C_perdido', 'perc_N_perdido']])
+st.write("Perda acumulada de C (%):", round(dados['perc_C_perdido'].iloc[-1], 2))
+st.write("Perda acumulada de N (%):", round(dados['perc_N_perdido'].iloc[-1], 2))
+
+# ============================================================
+# SEÇÃO 3: CO₂ EQUIVALENTE (EXISTENTE)
+# ============================================================
+st.header("3. Emissões em CO₂ equivalente")
+GWP_CH4 = 25
+GWP_N2O = 298
+dados['CO2eq_CH4'] = dados['massa_CH4_g'] * GWP_CH4 / 1000   # kg
+dados['CO2eq_N2O'] = dados['massa_N2O_g'] * GWP_N2O / 1000   # kg
+dados['CO2eq_total'] = dados['CO2eq_CH4'] + dados['CO2eq_N2O']
+
+st.line_chart(dados[['CO2eq_CH4', 'CO2eq_N2O', 'CO2eq_total']])
+st.write("CO₂ equivalente acumulado (kg):", round(dados['CO2eq_total'].sum(), 2))
+
+# ============================================================
+# SEÇÃO 4: FLUXO PELO MÉTODO CIENTÍFICO (dC/dt) - EXISTENTE
+# ============================================================
+st.header("4. Fluxo de emissão - método da taxa de concentração (dC/dt)")
+
+# diferença de tempo em horas
 dados['delta_t_h'] = dados.index.to_series().diff().dt.total_seconds() / 3600
+
+# taxa de mudança da concentração
 dados['dCH4_dt'] = dados['CH4_ppm'].diff() / dados['delta_t_h']
 dados['dN2O_dt'] = dados['N2O_ppm'].diff() / dados['delta_t_h']
 
-# Fluxo em mg/m²/h
+# cálculo do fluxo (mg m⁻² h⁻¹)
 dados['flux_CH4_scientific'] = (
-    dados['dCH4_dt'] * 1e-6 *
-    (dados['P_Pa'] * VOLUME_CAMARA) / (R * dados['T_K']) *
-    M_CH4 / area_camara * 1000
-)
+    dados['dCH4_dt'] *
+    (dados['P_Pa'] * volume_camara) /
+    (R * dados['T_K']) *
+    M_CH4 /
+    area_camara
+) * 1000
 
 dados['flux_N2O_scientific'] = (
-    dados['dN2O_dt'] * 1e-6 *
-    (dados['P_Pa'] * VOLUME_CAMARA) / (R * dados['T_K']) *
-    M_N2O / area_camara * 1000
-)
+    dados['dN2O_dt'] *
+    (dados['P_Pa'] * volume_camara) /
+    (R * dados['T_K']) *
+    M_N2O /
+    area_camara
+) * 1000
 
 st.line_chart(dados[['flux_CH4_scientific', 'flux_N2O_scientific']])
-st.write(f"**Fluxo médio CH₄ (mg m⁻² h⁻¹):** {dados['flux_CH4_scientific'].mean():.4f}")
-st.write(f"**Fluxo médio N₂O (mg m⁻² h⁻¹):** {dados['flux_N2O_scientific'].mean():.4f}")
+st.write("Fluxo médio CH₄ (mg m⁻² h⁻¹):", round(dados['flux_CH4_scientific'].mean(), 4))
+st.write("Fluxo médio N₂O (mg m⁻² h⁻¹):", round(dados['flux_N2O_scientific'].mean(), 4))
 
 # ============================================================
-# MÉTODO DE CÂMARA DE FLUXO CONTÍNUO (YANG ET AL. 2017)
+# SEÇÃO 5: MÉTODO DE CÂMARA DE FLUXO CONTÍNUO (YANG ET AL.) - NOVO
 # ============================================================
-st.header("🌪️ Método de câmara de fluxo contínuo (Yang et al.)")
+st.header("5. Fluxo de emissão - método de câmara de fluxo contínuo (Yang et al. 2017)")
 
-col1, col2 = st.columns(2)
+st.markdown("""
+Este método utiliza a equação:
+
+\[
+E = \frac{Y \cdot (Q_{sw} + Q_{ad})}{A}
+\]
+
+onde:
+- \(E\) = fluxo de emissão (mg m⁻² h⁻¹)
+- \(Y\) = concentração do gás na saída da câmara (mg m⁻³)
+- \(Q_{sw}\) = vazão de ar de arraste (m³ h⁻¹)
+- \(Q_{ad}\) = vazão adicional determinada por traçador (m³ h⁻¹)
+- \(A\) = área da base da câmara (m²)
+""")
+
+col1, col2, col3 = st.columns(3)
 with col1:
-    Q_sw = st.number_input("Vazão de ar de arraste (L/min)", value=5.0, step=0.5)
+    Q_sw = st.number_input("Vazão de ar de arraste (L/min)", value=5.0, step=0.1)
+    area_camara_yang = st.number_input("Área da câmara (m²)", value=0.13, step=0.01, key="area_yang")
+with col2:
     usar_Q_ad = st.checkbox("Usar vazão adicional (Q_ad)")
     if usar_Q_ad:
         Q_ad = st.number_input("Q_ad (L/min)", value=0.0, step=0.1)
     else:
         Q_ad = 0.0
-with col2:
-    area_camara_yang = st.number_input("Área da câmara (m²) - Yang", value=area_camara, step=0.01)
-    st.info("Concentrações devem estar em ppm. O cálculo assume que as medições representam o estado estacionário.")
+with col3:
+    st.info("Concentrações em ppm convertidas usando P e T médios.")
 
-Q_total_m3h = (Q_sw + Q_ad) * 60 / 1000  # m³/h
+# Converter vazão para m³/h
+Q_total_m3h = (Q_sw + Q_ad) * 60 / 1000
 
-# Agrupar por dia e calcular fluxo diário
+# Calcular fluxo diário (agrupar por dia)
 dados['data'] = dados.index.date
 fluxos_dia = []
 
@@ -155,12 +184,15 @@ for dia, grupo in dados.groupby('data'):
     C_ch4_ppm = grupo['CH4_ppm'].mean()
     C_n2o_ppm = grupo['N2O_ppm'].mean()
     
-    # Converter ppm para mg/m³ usando P e T médios do dia
+    # Média de P e T no dia
     P_media_dia = grupo['P_Pa'].mean()
     T_media_dia = grupo['T_K'].mean()
-    P_RT = P_media_dia / (R * T_media_dia)
-    C_ch4_mg_m3 = C_ch4_ppm * 1e-6 * P_RT * M_CH4 * 1e3  # ppm -> mg/m³
-    C_n2o_mg_m3 = C_n2o_ppm * 1e-6 * P_RT * M_N2O * 1e3
+    
+    # Converter ppm para mg/m³
+    # mg/m³ = ppm * (P/RT) * M * 1000
+    P_RT = P_media_dia / (R * T_media_dia)   # mol/m³
+    C_ch4_mg_m3 = C_ch4_ppm * P_RT * M_CH4 * 1000
+    C_n2o_mg_m3 = C_n2o_ppm * P_RT * M_N2O * 1000
     
     # Fluxo (mg/m²/h)
     fluxo_ch4 = (C_ch4_mg_m3 * Q_total_m3h) / area_camara_yang
@@ -175,93 +207,80 @@ for dia, grupo in dados.groupby('data'):
     })
 
 df_fluxos = pd.DataFrame(fluxos_dia).sort_values('data')
-st.write("Fluxos calculados por dia (método Yang):")
-st.dataframe(df_fluxos.style.format({
-    'fluxo_CH4_mg': '{:.2f}',
-    'fluxo_N2O_mg': '{:.2f}',
-    'C_ch4_ppm': '{:.2f}',
-    'C_n2o_ppm': '{:.3f}'
-}))
-
+st.write("Fluxos calculados por dia de medição:")
+st.dataframe(df_fluxos)
 st.line_chart(df_fluxos.set_index('data')[['fluxo_CH4_mg', 'fluxo_N2O_mg']])
 
 # ============================================================
-# INTEGRAÇÃO TEMPORAL E COMPARAÇÃO COM YANG ET AL. 2017
+# SEÇÃO 6: COMPARAÇÃO COM RESULTADOS DO ARTIGO (OPCIONAL)
 # ============================================================
-st.header("⏱️ Emissões acumuladas e comparação com o artigo")
+st.header("6. Comparação com Yang et al. 2017 (opcional)")
 
-# Calcular intervalos entre medições (em horas)
-df_fluxos = df_fluxos.copy()
-df_fluxos['data_prox'] = df_fluxos['data'].shift(-1)
-df_fluxos['intervalo_h'] = (df_fluxos['data_prox'] - df_fluxos['data']).dt.total_seconds() / 3600
-# Último intervalo: assumir que dura até o fim do experimento (último dia + 5 dias, ajustável)
-ultimo_intervalo_dias = st.number_input("Duração após última medição (dias)", value=5)
-df_fluxos.loc[df_fluxos.index[-1], 'intervalo_h'] = ultimo_intervalo_dias * 24
+st.markdown("""
+Para reproduzir os valores do artigo, utilize:
+- Massa seca total: **375 kg**
+- Teor de C inicial: **43,6%**
+- Teor de N inicial: **1,42%**
+- Área do reator: **1,5 m²**
+- Vazão de ar de arraste: **5 L/min**
+- Área da câmara: **0,13 m²**
 
-# Calcular massa emitida em cada período (kg)
-df_fluxos['massa_CH4_kg'] = df_fluxos['fluxo_CH4_mg'] * 1e-6 * area_reator * df_fluxos['intervalo_h']
-df_fluxos['massa_N2O_kg'] = df_fluxos['fluxo_N2O_mg'] * 1e-6 * area_reator * df_fluxos['intervalo_h']
-
-# Totais
-total_CH4_kg = df_fluxos['massa_CH4_kg'].sum()
-total_N2O_kg = df_fluxos['massa_N2O_kg'].sum()
-
-st.write(f"**Emissão total de CH₄:** {total_CH4_kg:.4f} kg")
-st.write(f"**Emissão total de N₂O:** {total_N2O_kg:.4f} kg")
-
-# Perdas de C e N
-C_perdido = total_CH4_kg * (12/16)
-N_perdido = total_N2O_kg * (28/44)
-C_inicial_kg = massa_seca_total * (teor_c_inicial / 100)
-N_inicial_kg = massa_seca_total * (teor_n_inicial / 100)
-
-perc_C_perdido = (C_perdido / C_inicial_kg) * 100 if C_inicial_kg > 0 else 0
-perc_N_perdido = (N_perdido / N_inicial_kg) * 100 if N_inicial_kg > 0 else 0
-
-st.write(f"**Carbono perdido como CH₄:** {C_perdido:.4f} kg ({perc_C_perdido:.3f}% do C inicial)")
-st.write(f"**Nitrogênio perdido como N₂O:** {N_perdido:.4f} kg ({perc_N_perdido:.3f}% do N inicial)")
-
-# GEE total
-CO2eq_CH4 = total_CH4_kg * GWP_CH4
-CO2eq_N2O = total_N2O_kg * GWP_N2O
-CO2eq_total = CO2eq_CH4 + CO2eq_N2O
-massa_seca_t = massa_seca_total / 1000
-CO2eq_por_t = CO2eq_total / massa_seca_t
-
-st.write(f"**Emissão total de GEE:** {CO2eq_total:.2f} kg CO₂-eq")
-st.write(f"**Emissão por tonelada de MS:** {CO2eq_por_t:.2f} kg CO₂-eq/t MS")
-
-# Comparação com Yang
-st.markdown("### Comparação com Yang et al. (2017) - Vermicompostagem")
-st.write(f"Seu resultado - % C perdido (CH₄): **{perc_C_perdido:.3f}%** (Yang: 0,13%)")
-st.write(f"Seu resultado - % N perdido (N₂O): **{perc_N_perdido:.3f}%** (Yang: 0,92%)")
-st.write(f"Seu resultado - GEE por tonelada: **{CO2eq_por_t:.2f}** (Yang: 8,1 kg CO₂-eq/t MS)")
-
-st.info("""
-**Nota:** Os valores calculados dependem fortemente dos parâmetros inseridos (massa seca, teores de C/N, área do reator, vazão, etc.). 
-Para reproduzir exatamente os números do artigo, utilize os parâmetros calibrados: 
-- Massa seca total = 375 kg 
-- Teor de C inicial = 43,6% 
-- Teor de N inicial = 1,42% 
-- Área do reator = 1,5 m² 
-- Vazão Q_sw = 5 L/min 
-- Área da câmara = 0,13 m² 
-- Dados gerados com o script fornecido.
+Após calcular os fluxos diários, integre-os ao longo do tempo para obter as emissões acumuladas.
 """)
 
-# ============================================================
-# DOWNLOAD DOS RESULTADOS (opcional)
-# ============================================================
-st.header("📥 Download dos resultados")
-resultados = pd.DataFrame({
-    'data': df_fluxos['data'],
-    'fluxo_CH4_mg_m2_h': df_fluxos['fluxo_CH4_mg'],
-    'fluxo_N2O_mg_m2_h': df_fluxos['fluxo_N2O_mg'],
-    'C_ch4_ppm': df_fluxos['C_ch4_ppm'],
-    'C_n2o_ppm': df_fluxos['C_n2o_ppm'],
-    'intervalo_h': df_fluxos['intervalo_h']
-})
-csv = resultados.to_csv(index=False).encode('utf-8')
-st.download_button("Baixar fluxos calculados (CSV)", csv, "fluxos_diarios.csv", "text/csv")
+if st.checkbox("Calcular emissões acumuladas (necessário área do reator e intervalos entre medições)"):
+    area_reator = st.number_input("Área da base do reator (m²)", value=1.5, step=0.1)
+    
+    # Estimar intervalos entre medições (dias consecutivos)
+    df_fluxos = df_fluxos.copy()
+    df_fluxos['data_prox'] = df_fluxos['data'].shift(-1)
+    df_fluxos['intervalo_dias'] = (df_fluxos['data_prox'] - df_fluxos['data']).dt.days
+    # Para o último dia, assumir intervalo igual à mediana dos anteriores
+    ultimo_intervalo = df_fluxos['intervalo_dias'].median()
+    df_fluxos.loc[df_fluxos.index[-1], 'intervalo_dias'] = ultimo_intervalo
+    
+    # Converter fluxo (mg/m²/h) para massa emitida no período (kg)
+    # massa (kg) = fluxo (mg/m²/h) * 1e-6 * área_reator (m²) * intervalo (dias) * 24 h/dia
+    df_fluxos['massa_CH4_kg'] = df_fluxos['fluxo_CH4_mg'] * 1e-6 * area_reator * df_fluxos['intervalo_dias'] * 24
+    df_fluxos['massa_N2O_kg'] = df_fluxos['fluxo_N2O_mg'] * 1e-6 * area_reator * df_fluxos['intervalo_dias'] * 24
+    
+    total_CH4_kg = df_fluxos['massa_CH4_kg'].sum()
+    total_N2O_kg = df_fluxos['massa_N2O_kg'].sum()
+    
+    st.write(f"**Emissão total de CH₄:** {total_CH4_kg:.4f} kg")
+    st.write(f"**Emissão total de N₂O:** {total_N2O_kg:.4f} kg")
+    
+    # Perdas de C e N
+    C_perdido_CH4 = total_CH4_kg * (M_C / M_CH4)
+    N_perdido_N2O = total_N2O_kg * (2 * M_N / M_N2O)
+    
+    massa_seca_total = st.number_input("Massa seca total (kg)", value=375.0, key="massa_seca")
+    teor_c = st.number_input("Teor de C inicial (%)", value=43.6, key="teor_c")
+    teor_n = st.number_input("Teor de N inicial (%)", value=1.42, key="teor_n")
+    
+    C_inicial_kg = massa_seca_total * teor_c / 100
+    N_inicial_kg = massa_seca_total * teor_n / 100
+    
+    perc_C = (C_perdido_CH4 / C_inicial_kg) * 100
+    perc_N = (N_perdido_N2O / N_inicial_kg) * 100
+    
+    st.write(f"**Carbono perdido como CH₄:** {C_perdido_CH4:.4f} kg ({perc_C:.3f}% do C inicial)")
+    st.write(f"**Yang et al. (2017):** 0,13%")
+    st.write(f"**Nitrogênio perdido como N₂O:** {N_perdido_N2O:.4f} kg ({perc_N:.3f}% do N inicial)")
+    st.write(f"**Yang et al. (2017):** 0,92%")
+    
+    # GEE por tonelada de MS
+    CO2eq_CH4 = total_CH4_kg * GWP_CH4
+    CO2eq_N2O = total_N2O_kg * GWP_N2O
+    CO2eq_total = CO2eq_CH4 + CO2eq_N2O
+    CO2eq_por_t = CO2eq_total / (massa_seca_total / 1000)   # kg CO₂-eq / t MS
+    
+    st.write(f"**Emissão total de GEE:** {CO2eq_total:.2f} kg CO₂-eq")
+    st.write(f"**Emissão por tonelada de MS:** {CO2eq_por_t:.2f} kg CO₂-eq/t MS")
+    st.write(f"**Yang et al. (2017):** 8,1 kg CO₂-eq/t MS")
 
-st.success("Análise concluída!")
+# ============================================================
+# RODAPÉ
+# ============================================================
+st.markdown("---")
+st.caption("Aplicativo desenvolvido para análise de emissões em vermicompostagem, baseado em Yang et al. 2017.")
