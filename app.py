@@ -158,6 +158,47 @@ st.subheader("Evolução da perda percentual")
 st.line_chart(dados[["C_loss_percent","N_loss_percent"]])
 
 # -----------------------------
+# Interpretação climática das perdas
+# -----------------------------
+
+st.subheader("Interpretação das perdas como emissão atmosférica")
+
+C_emitido = dados["C_perdido_acum_g"].iloc[-1]
+N_emitido = dados["N_perdido_acum_g"].iloc[-1]
+
+perc_C_emitido = (C_emitido / C_inicial) * 100
+perc_N_emitido = (N_emitido / N_inicial) * 100
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.metric(
+        label="Carbono emitido como CH4 (%)",
+        value=f"{perc_C_emitido:.2f} %"
+    )
+
+with col2:
+    st.metric(
+        label="Nitrogênio emitido como N2O (%)",
+        value=f"{perc_N_emitido:.2f} %"
+    )
+
+st.markdown(f"""
+Durante o processo de vermicompostagem:
+
+- Parte do **carbono do resíduo é convertido em CH₄**
+- Parte do **nitrogênio do resíduo é convertido em N₂O**
+
+Isso significa que:
+
+**{perc_C_emitido:.2f}% do carbono inicial foi emitido como metano (CH₄)**  
+**{perc_N_emitido:.2f}% do nitrogênio inicial foi emitido como óxido nitroso (N₂O)**  
+
+Esses gases são então liberados para a **atmosfera**, contribuindo para o **potencial de aquecimento global**, que é calculado na seção de **CO₂ equivalente** abaixo.
+""")
+
+
+# -----------------------------
 # CO2 equivalente
 # -----------------------------
 
