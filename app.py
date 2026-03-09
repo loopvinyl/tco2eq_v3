@@ -41,7 +41,7 @@ elif gwp_option == "IPCC AR6 - GWP500":
 arquivo = "dados_emissoes.csv"
 
 # -----------------------------
-# Criar CSV exemplo
+# Criar CSV exemplo se não existir
 # -----------------------------
 
 if not os.path.exists(arquivo):
@@ -104,7 +104,6 @@ st.line_chart(dados["CO2_ppm"])
 st.subheader("Temperatura do sistema")
 st.line_chart(dados["temperature_C"])
 
-
 # -----------------------------
 # Cálculo de massa
 # -----------------------------
@@ -136,15 +135,25 @@ st.subheader("Massa acumulada de gases")
 
 st.line_chart(dados[["CH4_acum_g","N2O_acum_g"]])
 
-
 # -----------------------------
-# Perda de elementos (Yang)
+# Perda de elementos
 # -----------------------------
 
 st.subheader("Perda de Carbono e Nitrogênio")
 
-C_inicial = st.number_input("Carbono inicial do material (g)",value=1000.0)
-N_inicial = st.number_input("Nitrogênio inicial do material (g)",value=100.0)
+st.caption("Valores padrão baseados em parâmetros utilizados ou inferidos do estudo de Yang et al.")
+
+C_inicial = st.number_input(
+    "Carbono inicial do material (g)",
+    value=1000.0,
+    step=10.0
+)
+
+N_inicial = st.number_input(
+    "Nitrogênio inicial do material (g)",
+    value=100.0,
+    step=1.0
+)
 
 dados["C_perdido_g"] = dados["CH4_g"] * (12/16)
 dados["N_perdido_g"] = dados["N2O_g"] * (28/44)
@@ -169,7 +178,6 @@ col1, col2 = st.columns(2)
 col1.metric("Perda de C via CH4 (%)",f"{C_loss_final:.3f}")
 col2.metric("Perda de N via N2O (%)",f"{N_loss_final:.3f}")
 
-
 # -----------------------------
 # CO2 equivalente
 # -----------------------------
@@ -181,7 +189,6 @@ dados["CO2eq_total_g"] = dados["CH4_CO2eq_g"] + dados["N2O_CO2eq_g"]
 
 dados["CO2eq_acum_g"] = dados["CO2eq_total_g"].cumsum()
 
-
 # -----------------------------
 # CO2eq por gás
 # -----------------------------
@@ -192,7 +199,6 @@ dados["CH4_CO2eq_acum_g"] = dados["CH4_CO2eq_g"].cumsum()
 dados["N2O_CO2eq_acum_g"] = dados["N2O_CO2eq_g"].cumsum()
 
 st.line_chart(dados[["CH4_CO2eq_acum_g","N2O_CO2eq_acum_g"]])
-
 
 # -----------------------------
 # CO2eq total
