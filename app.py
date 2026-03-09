@@ -20,22 +20,18 @@ M_C = 12.01                    # g/mol
 M_N = 14.01                    # g/mol
 
 # ============================================================
-# CARREGAMENTO DOS DADOS
+# CARREGAMENTO DOS DADOS (AGORA FIXO)
 # ============================================================
 st.sidebar.header("Configurações")
-arquivo = st.sidebar.file_uploader("Escolha o arquivo CSV", type=['csv'])
-if arquivo is not None:
-    dados = pd.read_csv(arquivo, parse_dates=['timestamp'])
+
+# Carrega diretamente o arquivo CSV (deve estar na mesma pasta)
+try:
+    dados = pd.read_csv('dados_yang_fluxo_continuo.csv', parse_dates=['timestamp'])
     dados.set_index('timestamp', inplace=True)
-    st.sidebar.success("Arquivo carregado!")
-else:
-    st.sidebar.warning("Usando arquivo padrão 'dados_yang_fluxo_continuo.csv'")
-    try:
-        dados = pd.read_csv('dados_yang_fluxo_continuo.csv', parse_dates=['timestamp'])
-        dados.set_index('timestamp', inplace=True)
-    except FileNotFoundError:
-        st.error("Arquivo padrão não encontrado. Faça o upload de um arquivo CSV.")
-        st.stop()
+    st.sidebar.success("Arquivo 'dados_yang_fluxo_continuo.csv' carregado!")
+except FileNotFoundError:
+    st.error("Arquivo 'dados_yang_fluxo_continuo.csv' não encontrado. Certifique-se de que ele está na mesma pasta do app.")
+    st.stop()
 
 # Mostrar primeiras linhas
 st.subheader("Visualização dos dados")
