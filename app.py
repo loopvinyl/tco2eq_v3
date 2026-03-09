@@ -217,3 +217,34 @@ st.line_chart(dados[["CH4_CO2eq_acum_g","N2O_CO2eq_acum_g"]])
 
 st.subheader("Emissões acumuladas em CO2 equivalente")
 st.line_chart(dados["CO2eq_acum_g"])
+
+# -----------------------------
+# Fluxo de emissão (padrão científico)
+# -----------------------------
+
+st.subheader("Fluxo de emissão dos gases (mg m² h⁻¹)")
+
+area_camara = st.number_input(
+    "Área da câmara (m²)",
+    value=0.07
+)
+
+# diferença de tempo entre medições
+dados["delta_t_h"] = dados.index.to_series().diff().dt.total_seconds()/3600
+
+# variação de massa entre medições
+dados["delta_CH4_g"] = dados["CH4_g"].diff()
+dados["delta_N2O_g"] = dados["N2O_g"].diff()
+
+# converter para mg
+dados["delta_CH4_mg"] = dados["delta_CH4_g"]*1000
+dados["delta_N2O_mg"] = dados["delta_N2O_g"]*1000
+
+# cálculo do fluxo
+dados["flux_CH4_mg_m2_h"] = dados["delta_CH4_mg"]/(area_camara*dados["delta_t_h"])
+dados["flux_N2O_mg_m2_h"] = dados["delta_N2O_mg"]/(area_camara*dados["delta_t_h"])
+
+st.line_chart(dados[["flux_CH4_mg_m2_h","flux_N2O_mg_m2_h"]])
+
+st.write("Fluxo médio CH4 (mg m² h⁻¹):", round(dados["flux_CH4_mg_m2_h"].mean(),4))
+st.write("Fluxo médio N2O (mg m² h⁻¹):", round(dados["flux_N2O_mg_m2_h"].mean(),4))
