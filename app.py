@@ -41,7 +41,7 @@ elif gwp_option == "IPCC AR6 - GWP500":
 arquivo = "dados_emissoes.csv"
 
 # -----------------------------
-# Criar CSV exemplo se não existir
+# Criar CSV exemplo
 # -----------------------------
 
 if not os.path.exists(arquivo):
@@ -61,34 +61,22 @@ if not os.path.exists(arquivo):
         "2016-07-21 10:00"
         ],
 
-        "chamber_id":[1]*11,
-
         "CH4_ppm":[2.1,1.9,1.7,1.4,1.1,0.85,0.65,0.50,0.35,0.25,0.18],
         "N2O_ppm":[0.2,0.28,0.45,0.70,0.90,1.05,0.95,0.75,0.55,0.35,0.22],
         "CO2_ppm":[410,415,420,425,430,435,438,440,442,444,445],
 
         "temperature_C":[25.1,25.4,25.7,26.0,26.3,26.6,26.8,27.0,27.2,27.4,27.6],
-
         "pressure_kPa":[101.3,101.2,101.2,101.1,101.1,101.0,101.0,100.9,100.9,100.8,100.8],
-
         "humidity_percent":[60,61,62,63,64,65,65,66,66,67,67]
     })
 
     dados_exemplo.to_csv(arquivo,index=False)
 
-
-# -----------------------------
-# Ler dados
-# -----------------------------
-
 dados = pd.read_csv(arquivo)
-
 dados["timestamp"] = pd.to_datetime(dados["timestamp"])
-
 dados = dados.set_index("timestamp")
 
 st.subheader("Dados coletados do analisador")
-
 st.dataframe(dados)
 
 # -----------------------------
@@ -105,7 +93,7 @@ st.subheader("Temperatura do sistema")
 st.line_chart(dados["temperature_C"])
 
 # -----------------------------
-# Cálculo de massa
+# Cálculo de massa dos gases
 # -----------------------------
 
 R = 8.314
@@ -132,78 +120,59 @@ dados["CH4_acum_g"] = dados["CH4_g"].cumsum()
 dados["N2O_acum_g"] = dados["N2O_g"].cumsum()
 
 st.subheader("Massa acumulada de gases")
-
 st.line_chart(dados[["CH4_acum_g","N2O_acum_g"]])
+
+# -----------------------------
+# Parâmetros do material (Yang)
+# -----------------------------
+
+st.subheader("Parâmetros do material inicial (Yang et al. 2017)")
+
+massa_inicial = st.number_input("Massa inicial do resíduo (g)",value=245.28)
+umidade = st.number_input("Umidade (%)",value=50.8)
+TOC = st.number_input("Carbono orgânico total (%)",value=43.6)
+TN = st.number_input("Nitrogênio total (g/kg)",value=14.2)
+
+DM = massa_inicial*(1-umidade/100)
+
+C_inicial = DM*(TOC/100)
+N_inicial = DM*(TN/1000)
+
+st.write("Carbono inicial estimado (g):",round(C_inicial,3))
+st.write("Nitrogênio inicial estimado (g):",round(N_inicial,3))
 
 # -----------------------------
 # Perda de elementos
 # -----------------------------
 
-st.subheader("Perda de Carbono e Nitrogênio")
+dados["C_perdido_g"] = dados["CH4_g"]*(12/16)
+dados["N_perdido_g"] = dados["N2O_g"]*(28/44)
 
-st.caption("Valores padrão baseados em parâmetros utilizados ou inferidos do estudo de Yang et al.")
+dados["C_perdido_acum_g"]=dados["C_perdido_g"].cumsum()
+dados["N_perdido_acum_g"]=dados["N_perdido_g"].cumsum()
 
-C_inicial = st.number_input(
-    "Carbono inicial do material (g)",
-    value=1000.0,
-    step=10.0
-)
-
-N_inicial = st.number_input(
-    "Nitrogênio inicial do material (g)",
-    value=100.0,
-    step=1.0
-)
-
-dados["C_perdido_g"] = dados["CH4_g"] * (12/16)
-dados["N_perdido_g"] = dados["N2O_g"] * (28/44)
-
-dados["C_perdido_acum_g"] = dados["C_perdido_g"].cumsum()
-dados["N_perdido_acum_g"] = dados["N_perdido_g"].cumsum()
-
-dados["C_loss_percent"] = (dados["C_perdido_acum_g"] / C_inicial) * 100
-dados["N_loss_percent"] = (dados["N_perdido_acum_g"] / N_inicial) * 100
+dados["C_loss_percent"]=(dados["C_perdido_acum_g"]/C_inicial)*100
+dados["N_loss_percent"]=(dados["N_perdido_acum_g"]/N_inicial)*100
 
 st.subheader("Evolução da perda percentual")
-
 st.line_chart(dados[["C_loss_percent","N_loss_percent"]])
-
-C_loss_final = dados["C_loss_percent"].iloc[-1]
-N_loss_final = dados["N_loss_percent"].iloc[-1]
-
-st.subheader("Perda total acumulada")
-
-col1, col2 = st.columns(2)
-
-col1.metric("Perda de C via CH4 (%)",f"{C_loss_final:.3f}")
-col2.metric("Perda de N via N2O (%)",f"{N_loss_final:.3f}")
 
 # -----------------------------
 # CO2 equivalente
 # -----------------------------
 
-dados["CH4_CO2eq_g"] = dados["CH4_g"] * GWP_CH4
-dados["N2O_CO2eq_g"] = dados["N2O_g"] * GWP_N2O
+dados["CH4_CO2eq_g"]=dados["CH4_g"]*GWP_CH4
+dados["N2O_CO2eq_g"]=dados["N2O_g"]*GWP_N2O
 
-dados["CO2eq_total_g"] = dados["CH4_CO2eq_g"] + dados["N2O_CO2eq_g"]
-
-dados["CO2eq_acum_g"] = dados["CO2eq_total_g"].cumsum()
-
-# -----------------------------
-# CO2eq por gás
-# -----------------------------
+dados["CO2eq_total_g"]=dados["CH4_CO2eq_g"]+dados["N2O_CO2eq_g"]
+dados["CO2eq_acum_g"]=dados["CO2eq_total_g"].cumsum()
 
 st.subheader("Emissões de cada gás em CO2 equivalente")
 
-dados["CH4_CO2eq_acum_g"] = dados["CH4_CO2eq_g"].cumsum()
-dados["N2O_CO2eq_acum_g"] = dados["N2O_CO2eq_g"].cumsum()
+dados["CH4_CO2eq_acum_g"]=dados["CH4_CO2eq_g"].cumsum()
+dados["N2O_CO2eq_acum_g"]=dados["N2O_CO2eq_g"].cumsum()
 
 st.line_chart(dados[["CH4_CO2eq_acum_g","N2O_CO2eq_acum_g"]])
 
-# -----------------------------
-# CO2eq total
-# -----------------------------
-
 st.subheader("Emissões acumuladas em CO2 equivalente")
-
 st.line_chart(dados["CO2eq_acum_g"])
