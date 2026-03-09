@@ -43,7 +43,7 @@ with col2:
     volume_camara = st.number_input("Volume da câmara (m³)", value=VOLUME_CAMARA_PADRAO, step=0.01, key="volume_camara_principal")
 
 # ============================================================
-# SEÇÃO 1: MASSA DE GÁS NA CÂMARA (INSTANTÂNEA)
+# SEÇÃO 1: MASSA DE GÁS NA CÂMARA (INSTANTÂNEA) - EM mg
 # ============================================================
 st.header("1. Massa de gás na câmara")
 dados['CH4_mol'] = dados['CH4_ppm'] * 1e-6
@@ -56,9 +56,13 @@ n_total = (P_media * volume_camara) / (R * T_media)   # mol
 dados['massa_CH4_g'] = dados['CH4_mol'] * n_total * M_CH4
 dados['massa_N2O_g'] = dados['N2O_mol'] * n_total * M_N2O
 
-st.line_chart(dados[['massa_CH4_g', 'massa_N2O_g']])
-st.write("Massa média CH₄ (g):", round(dados['massa_CH4_g'].mean(), 6))
-st.write("Massa média N₂O (g):", round(dados['massa_N2O_g'].mean(), 6))
+# Converter para miligramas
+dados['massa_CH4_mg'] = dados['massa_CH4_g'] * 1000
+dados['massa_N2O_mg'] = dados['massa_N2O_g'] * 1000
+
+st.line_chart(dados[['massa_CH4_mg', 'massa_N2O_mg']])
+st.write("Massa média CH₄ (mg):", round(dados['massa_CH4_mg'].mean(), 6))
+st.write("Massa média N₂O (mg):", round(dados['massa_N2O_mg'].mean(), 6))
 
 # ============================================================
 # SEÇÃO 4: FLUXO PELO MÉTODO dC/dt (CÂMARA ESTÁTICA)
