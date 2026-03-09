@@ -90,11 +90,6 @@ st.write("Perda acumulada de C (%):", round(dados['perc_C_perdido'].iloc[-1], 2)
 st.write("Perda acumulada de N (%):", round(dados['perc_N_perdido'].iloc[-1], 2))
 
 # ============================================================
-# SEÇÃO 3: (REMOVIDA) Emissões em CO₂ equivalente
-# ============================================================
-# (Seção removida conforme solicitação)
-
-# ============================================================
 # SEÇÃO 4: FLUXO PELO MÉTODO CIENTÍFICO (dC/dt) - EXISTENTE
 # ============================================================
 st.header("4. Fluxo de emissão - método da taxa de concentração (dC/dt)")
@@ -258,8 +253,6 @@ if st.checkbox("Calcular emissões acumuladas (necessário área do reator e int
     st.write(f"**Yang et al. (2017):** 0,92%")
     
     # GEE por tonelada de MS
-    GWP_CH4 = 25
-    GWP_N2O = 298
     CO2eq_CH4 = total_CH4_kg * GWP_CH4
     CO2eq_N2O = total_N2O_kg * GWP_N2O
     CO2eq_total = CO2eq_CH4 + CO2eq_N2O
@@ -274,6 +267,3 @@ if st.checkbox("Calcular emissões acumuladas (necessário área do reator e int
 # ============================================================
 st.markdown("---")
 st.caption("Aplicativo desenvolvido para análise de emissões em vermicompostagem, baseado em Yang et al. 2017.")
-
-st.write("Estatísticas das concentrações:")
-st.write(dados[['CH4_ppm', 'N2O_ppm']].describe())
