@@ -86,8 +86,8 @@ dados['perc_C_perdido'] = (dados['C_perdido_g'].cumsum() / C_total_inicial_g) * 
 dados['perc_N_perdido'] = (dados['N_perdido_g'].cumsum() / N_total_inicial_g) * 100
 
 st.line_chart(dados[['perc_C_perdido', 'perc_N_perdido']])
-st.write("Perda acumulada de C (%):", round(dados['perc_C_perdido'].iloc[-1], 2))
-st.write("Perda acumulada de N (%):", round(dados['perc_N_perdido'].iloc[-1], 2))
+st.write("Perda acumulada de C (%):", round(dados['perc_C_perdido'].iloc[-1], 4))
+st.write("Perda acumulada de N (%):", round(dados['perc_N_perdido'].iloc[-1], 4))
 
 # ============================================================
 # SEÇÃO 3: CO₂ EQUIVALENTE (EXISTENTE)
