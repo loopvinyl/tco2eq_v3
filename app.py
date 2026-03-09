@@ -1,201 +1,178 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import os
 
 st.title("Monitoramento de Gases - Vermicompostagem")
 
-# ===============================
-# Upload dos dados
-# ===============================
+# -----------------------------
+# Escolha do GWP
+# -----------------------------
 
-arquivo = st.file_uploader("Carregar arquivo CSV com os dados do analisador", type=["csv"])
+st.subheader("Configuração do cálculo climático")
 
-if arquivo is not None:
+gwp_option = st.selectbox(
+    "Escolha o horizonte de tempo do GWP",
+    [
+        "Yang et al. (GWP-100 clássico)",
+        "IPCC AR6 - GWP20",
+        "IPCC AR6 - GWP100",
+        "IPCC AR6 - GWP500"
+    ]
+)
 
-    dados = pd.read_csv(arquivo)
+if gwp_option == "Yang et al. (GWP-100 clássico)":
+    GWP_CH4 = 25
+    GWP_N2O = 298
 
-    if "timestamp" in dados.columns:
-        dados["timestamp"] = pd.to_datetime(dados["timestamp"])
-        dados = dados.set_index("timestamp")
+elif gwp_option == "IPCC AR6 - GWP20":
+    GWP_CH4 = 79.7
+    GWP_N2O = 273
 
-    st.subheader("Dados coletados do analisador")
-    st.write(dados.head())
+elif gwp_option == "IPCC AR6 - GWP100":
+    GWP_CH4 = 27.0
+    GWP_N2O = 273
 
-    # ===============================
-    # Gráfico CH4 e N2O
-    # ===============================
+elif gwp_option == "IPCC AR6 - GWP500":
+    GWP_CH4 = 7.2
+    GWP_N2O = 130
 
-    st.subheader("Concentração de CH4 e N2O (ppm)")
 
-    gases = dados[["CH4_ppm", "N2O_ppm"]]
+arquivo = "dados_emissoes.csv"
 
-    st.line_chart(gases)
+# -----------------------------
+# Criar CSV exemplo
+# -----------------------------
 
-    # ===============================
-    # Gráfico CO2
-    # ===============================
+if not os.path.exists(arquivo):
 
-    if "CO2_ppm" in dados.columns:
+    dados_exemplo = pd.DataFrame({
+        "timestamp":[
+        "2016-06-01 10:00",
+        "2016-06-06 10:00",
+        "2016-06-11 10:00",
+        "2016-06-16 10:00",
+        "2016-06-21 10:00",
+        "2016-06-26 10:00",
+        "2016-07-01 10:00",
+        "2016-07-06 10:00",
+        "2016-07-11 10:00",
+        "2016-07-16 10:00",
+        "2016-07-21 10:00"
+        ],
 
-        st.subheader("Concentração de CO2")
+        "CH4_ppm":[2.1,1.9,1.7,1.4,1.1,0.85,0.65,0.50,0.35,0.25,0.18],
+        "N2O_ppm":[0.2,0.28,0.45,0.70,0.90,1.05,0.95,0.75,0.55,0.35,0.22],
+        "CO2_ppm":[410,415,420,425,430,435,438,440,442,444,445],
 
-        st.line_chart(dados["CO2_ppm"])
+        "temperature_C":[25.1,25.4,25.7,26.0,26.3,26.6,26.8,27.0,27.2,27.4,27.6],
+        "pressure_kPa":[101.3,101.2,101.2,101.1,101.1,101.0,101.0,100.9,100.9,100.8,100.8],
+        "humidity_percent":[60,61,62,63,64,65,65,66,66,67,67]
+    })
 
-    # ===============================
-    # Temperatura
-    # ===============================
+    dados_exemplo.to_csv(arquivo,index=False)
 
-    if "temperature" in dados.columns:
+dados = pd.read_csv(arquivo)
+dados["timestamp"] = pd.to_datetime(dados["timestamp"])
+dados = dados.set_index("timestamp")
 
-        st.subheader("Temperatura do sistema")
+st.subheader("Dados coletados do analisador")
+st.dataframe(dados)
 
-        st.line_chart(dados["temperature"])
+# -----------------------------
+# Gráficos de concentração
+# -----------------------------
 
-    # ===============================
-    # PARÂMETROS DO SISTEMA
-    # ===============================
+st.subheader("Concentração de CH4 e N2O (ppm)")
+st.line_chart(dados[["CH4_ppm","N2O_ppm"]])
 
-    st.sidebar.header("Parâmetros do sistema")
+st.subheader("Concentração de CO2")
+st.line_chart(dados["CO2_ppm"])
 
-    volume_camara = st.sidebar.number_input("Volume da câmara (L)", value=20.0)
-    massa_residuo = st.sidebar.number_input("Massa de resíduo (kg)", value=5.0)
+st.subheader("Temperatura do sistema")
+st.line_chart(dados["temperature_C"])
 
-    # ===============================
-    # CÁLCULO SIMPLIFICADO DE FLUXO
-    # ===============================
+# -----------------------------
+# Cálculo de massa dos gases
+# -----------------------------
 
-    fator_conversao = 0.001
+R = 8.314
+VOLUME_CAMARA = 0.02
 
-    dados["CH4_flux"] = dados["CH4_ppm"] * fator_conversao
-    dados["N2O_flux"] = dados["N2O_ppm"] * fator_conversao
+M_CH4 = 16.04
+M_N2O = 44.01
 
-    dados["CH4_cumulative"] = dados["CH4_flux"].cumsum()
-    dados["N2O_cumulative"] = dados["N2O_flux"].cumsum()
+dados["T_K"] = dados["temperature_C"] + 273.15
+dados["P_Pa"] = dados["pressure_kPa"] * 1000
 
-    # ===============================
-    # MASSA DOS GASES
-    # ===============================
+dados["mol_total"] = (dados["P_Pa"] * VOLUME_CAMARA) / (R * dados["T_K"])
 
-    CH4_massa = dados["CH4_cumulative"] * volume_camara / massa_residuo
-    N2O_massa = dados["N2O_cumulative"] * volume_camara / massa_residuo
+dados["CH4_frac"] = dados["CH4_ppm"] / 1e6
+dados["N2O_frac"] = dados["N2O_ppm"] / 1e6
 
-    dados["CH4_mass"] = CH4_massa
-    dados["N2O_mass"] = N2O_massa
+dados["mol_CH4"] = dados["mol_total"] * dados["CH4_frac"]
+dados["mol_N2O"] = dados["mol_total"] * dados["N2O_frac"]
 
-    # ===============================
-    # PERDA ELEMENTAR (Fe Yang approach)
-    # ===============================
+dados["CH4_g"] = dados["mol_CH4"] * M_CH4
+dados["N2O_g"] = dados["mol_N2O"] * M_N2O
 
-    C_inicial = st.sidebar.number_input("Carbono inicial (g)", value=1000.0)
-    N_inicial = st.sidebar.number_input("Nitrogênio inicial (g)", value=100.0)
+dados["CH4_acum_g"] = dados["CH4_g"].cumsum()
+dados["N2O_acum_g"] = dados["N2O_g"].cumsum()
 
-    fracao_C_CH4 = 12 / 16
-    fracao_N_N2O = 28 / 44
+st.subheader("Massa acumulada de gases")
+st.line_chart(dados[["CH4_acum_g","N2O_acum_g"]])
 
-    dados["C_loss"] = dados["CH4_mass"] * fracao_C_CH4
-    dados["N_loss"] = dados["N2O_mass"] * fracao_N_N2O
+# -----------------------------
+# Parâmetros do material (Yang)
+# -----------------------------
 
-    dados["C_loss_percent"] = (dados["C_loss"] / C_inicial) * 100
-    dados["N_loss_percent"] = (dados["N_loss"] / N_inicial) * 100
+st.subheader("Parâmetros do material inicial (Yang et al. 2017)")
 
-    # ===============================
-    # Gráfico perda percentual
-    # ===============================
+massa_inicial = st.number_input("Massa inicial do resíduo (g)",value=245.28)
+umidade = st.number_input("Umidade (%)",value=50.8)
+TOC = st.number_input("Carbono orgânico total (%)",value=43.6)
+TN = st.number_input("Nitrogênio total (g/kg)",value=14.2)
 
-    st.subheader("Evolução da perda percentual de C e N")
+DM = massa_inicial*(1-umidade/100)
 
-    perdas = dados[["C_loss_percent", "N_loss_percent"]]
+C_inicial = DM*(TOC/100)
+N_inicial = DM*(TN/1000)
 
-    st.line_chart(perdas)
+st.write("Carbono inicial estimado (g):",round(C_inicial,3))
+st.write("Nitrogênio inicial estimado (g):",round(N_inicial,3))
 
-    # ===============================
-    # NOVO BLOCO (percentual de perda)
-    # ===============================
+# -----------------------------
+# Perda de elementos
+# -----------------------------
 
-    st.subheader("Percentual de perda convertido em emissões atmosféricas")
+dados["C_perdido_g"] = dados["CH4_g"]*(12/16)
+dados["N_perdido_g"] = dados["N2O_g"]*(28/44)
 
-    st.markdown(
-    """
-    Nos sistemas de compostagem e vermicompostagem, a fração de carbono e nitrogênio
-    perdida na forma gasosa corresponde às emissões liberadas para a atmosfera.
+dados["C_perdido_acum_g"]=dados["C_perdido_g"].cumsum()
+dados["N_perdido_acum_g"]=dados["N_perdido_g"].cumsum()
 
-    - **Carbono perdido via CH4-C** representa o carbono emitido como **metano (CH4)**.
-    - **Nitrogênio perdido via N2O-N** representa o nitrogênio emitido como **óxido nitroso (N2O)**.
+dados["C_loss_percent"]=(dados["C_perdido_acum_g"]/C_inicial)*100
+dados["N_loss_percent"]=(dados["N_perdido_acum_g"]/N_inicial)*100
 
-    Assim, os percentuais abaixo indicam a fração do carbono e do nitrogênio inicial
-    que foi convertida em gases de efeito estufa e emitida para a atmosfera.
-    """
-    )
+st.subheader("Evolução da perda percentual")
+st.line_chart(dados[["C_loss_percent","N_loss_percent"]])
 
-    C_loss_final = dados["C_loss_percent"].iloc[-1]
-    N_loss_final = dados["N_loss_percent"].iloc[-1]
+# -----------------------------
+# CO2 equivalente
+# -----------------------------
 
-    col1, col2 = st.columns(2)
+dados["CH4_CO2eq_g"]=dados["CH4_g"]*GWP_CH4
+dados["N2O_CO2eq_g"]=dados["N2O_g"]*GWP_N2O
 
-    col1.metric(
-        "Carbono emitido como CH4 (%)",
-        f"{C_loss_final:.3f}"
-    )
+dados["CO2eq_total_g"]=dados["CH4_CO2eq_g"]+dados["N2O_CO2eq_g"]
+dados["CO2eq_acum_g"]=dados["CO2eq_total_g"].cumsum()
 
-    col2.metric(
-        "Nitrogênio emitido como N2O (%)",
-        f"{N_loss_final:.3f}"
-    )
+st.subheader("Emissões de cada gás em CO2 equivalente")
 
-    # ===============================
-    # GWP selection
-    # ===============================
+dados["CH4_CO2eq_acum_g"]=dados["CH4_CO2eq_g"].cumsum()
+dados["N2O_CO2eq_acum_g"]=dados["N2O_CO2eq_g"].cumsum()
 
-    st.sidebar.header("Escolha do GWP")
+st.line_chart(dados[["CH4_CO2eq_acum_g","N2O_CO2eq_acum_g"]])
 
-    gwp_opcao = st.sidebar.selectbox(
-        "Horizonte temporal",
-        ["Yang (100 anos)", "GWP-20", "GWP-100", "GWP-500"]
-    )
-
-    if gwp_opcao == "Yang (100 anos)":
-
-        CH4_GWP = 25
-        N2O_GWP = 298
-
-    elif gwp_opcao == "GWP-20":
-
-        CH4_GWP = 79.7
-        N2O_GWP = 273
-
-    elif gwp_opcao == "GWP-100":
-
-        CH4_GWP = 27
-        N2O_GWP = 273
-
-    else:
-
-        CH4_GWP = 7.2
-        N2O_GWP = 130
-
-    # ===============================
-    # CO2eq
-    # ===============================
-
-    dados["CH4_CO2eq"] = dados["CH4_mass"] * CH4_GWP
-    dados["N2O_CO2eq"] = dados["N2O_mass"] * N2O_GWP
-
-    # ===============================
-    # Gráfico CO2eq dos gases
-    # ===============================
-
-    st.subheader("Emissões dos gases em CO2 equivalente")
-
-    co2eq_gases = dados[["CH4_CO2eq", "N2O_CO2eq"]]
-
-    st.line_chart(co2eq_gases)
-
-    # ===============================
-    # Total CO2eq
-    # ===============================
-
-    dados["CO2eq_total"] = dados["CH4_CO2eq"] + dados["N2O_CO2eq"]
-
-    st.subheader("Emissões totais em CO2 equivalente")
-
-    st.line_chart(dados["CO2eq_total"])
+st.subheader("Emissões acumuladas em CO2 equivalente")
+st.line_chart(dados["CO2eq_acum_g"])
