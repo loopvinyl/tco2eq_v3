@@ -196,14 +196,14 @@ else:
             "Carbono perdido como CH₄",
             f"{C_perdido:.4f} kg",
             delta=f"-{perc_C:.3f}% do C inicial",
-            delta_color="inverse"
+            delta_color="normal"
         )
     with col2:
         st.metric(
             "Nitrogênio perdido como N₂O",
             f"{N_perdido:.4f} kg",
             delta=f"-{perc_N:.3f}% do N inicial",
-            delta_color="inverse"
+            delta_color="normal"
         )
     
     st.caption("Os valores negativos indicam perda de carbono e nitrogênio do sistema, emitidos como CH₄ e N₂O.")
