@@ -86,21 +86,13 @@ dados['perc_C_perdido'] = (dados['C_perdido_g'].cumsum() / C_total_inicial_g) * 
 dados['perc_N_perdido'] = (dados['N_perdido_g'].cumsum() / N_total_inicial_g) * 100
 
 st.line_chart(dados[['perc_C_perdido', 'perc_N_perdido']])
-st.write("Perda acumulada de C (%):", round(dados['perc_C_perdido'].iloc[-1], 4))
-st.write("Perda acumulada de N (%):", round(dados['perc_N_perdido'].iloc[-1], 4))
+st.write("Perda acumulada de C (%):", round(dados['perc_C_perdido'].iloc[-1], 2))
+st.write("Perda acumulada de N (%):", round(dados['perc_N_perdido'].iloc[-1], 2))
 
 # ============================================================
-# SEÇÃO 3: CO₂ EQUIVALENTE (EXISTENTE)
+# SEÇÃO 3: (REMOVIDA) Emissões em CO₂ equivalente
 # ============================================================
-st.header("3. Emissões em CO₂ equivalente")
-GWP_CH4 = 25
-GWP_N2O = 298
-dados['CO2eq_CH4'] = dados['massa_CH4_g'] * GWP_CH4 / 1000   # kg
-dados['CO2eq_N2O'] = dados['massa_N2O_g'] * GWP_N2O / 1000   # kg
-dados['CO2eq_total'] = dados['CO2eq_CH4'] + dados['CO2eq_N2O']
-
-st.line_chart(dados[['CO2eq_CH4', 'CO2eq_N2O', 'CO2eq_total']])
-st.write("CO₂ equivalente acumulado (kg):", round(dados['CO2eq_total'].sum(), 2))
+# (Seção removida conforme solicitação)
 
 # ============================================================
 # SEÇÃO 4: FLUXO PELO MÉTODO CIENTÍFICO (dC/dt) - EXISTENTE
@@ -266,6 +258,8 @@ if st.checkbox("Calcular emissões acumuladas (necessário área do reator e int
     st.write(f"**Yang et al. (2017):** 0,92%")
     
     # GEE por tonelada de MS
+    GWP_CH4 = 25
+    GWP_N2O = 298
     CO2eq_CH4 = total_CH4_kg * GWP_CH4
     CO2eq_N2O = total_N2O_kg * GWP_N2O
     CO2eq_total = CO2eq_CH4 + CO2eq_N2O
