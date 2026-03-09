@@ -66,30 +66,6 @@ st.write("Massa média CH4 (g):", round(dados['massa_CH4_g'].mean(), 4))
 st.write("Massa média N2O (g):", round(dados['massa_N2O_g'].mean(), 4))
 
 # ============================================================
-# SEÇÃO 2: PERDA DE CARBONO E NITROGÊNIO (EXISTENTE) - VALORES DEFAULT AJUSTADOS
-# ============================================================
-st.header("2. Perda de C e N (base acumulada)")
-# Massa seca inicial do material (kg) - default 375 kg (calibrado)
-massa_inicial_kg = st.number_input("Massa inicial do material (kg)", value=375.0)
-teor_carbono_percent = st.number_input("Teor de carbono inicial (% massa seca)", value=43.6)
-teor_nitrogenio_percent = st.number_input("Teor de nitrogênio inicial (% massa seca)", value=1.42)
-
-# Carbono no CH4
-dados['C_perdido_g'] = dados['massa_CH4_g'] * (M_C / M_CH4)
-# Nitrogênio no N2O
-dados['N_perdido_g'] = dados['massa_N2O_g'] * (2 * M_N / M_N2O)
-
-C_total_inicial_g = massa_inicial_kg * 1000 * (teor_carbono_percent / 100)
-N_total_inicial_g = massa_inicial_kg * 1000 * (teor_nitrogenio_percent / 100)
-
-dados['perc_C_perdido'] = (dados['C_perdido_g'].cumsum() / C_total_inicial_g) * 100
-dados['perc_N_perdido'] = (dados['N_perdido_g'].cumsum() / N_total_inicial_g) * 100
-
-st.line_chart(dados[['perc_C_perdido', 'perc_N_perdido']])
-st.write("Perda acumulada de C (%):", round(dados['perc_C_perdido'].iloc[-1], 2))
-st.write("Perda acumulada de N (%):", round(dados['perc_N_perdido'].iloc[-1], 2))
-
-# ============================================================
 # SEÇÃO 4: FLUXO PELO MÉTODO CIENTÍFICO (dC/dt) - EXISTENTE
 # ============================================================
 st.header("4. Fluxo de emissão - método da taxa de concentração (dC/dt)")
@@ -193,6 +169,60 @@ df_fluxos = pd.DataFrame(fluxos_dia).sort_values('data')
 st.write("Fluxos calculados por dia de medição:")
 st.dataframe(df_fluxos)
 st.line_chart(df_fluxos.set_index('data')[['fluxo_CH4_mg', 'fluxo_N2O_mg']])
+
+# ============================================================
+# SEÇÃO 2: PERDA DE CARBONO E NITROGÊNIO (BASE ACUMULADA) - VERSÃO PARA FLUXO CONTÍNUO
+# ============================================================
+st.header("2. Perda de C e N (base acumulada)")
+
+# Massa seca inicial do material (kg) - default 375 kg
+massa_inicial_kg = st.number_input("Massa inicial do material (kg)", value=375.0, key="massa_inicial")
+teor_carbono_percent = st.number_input("Teor de carbono inicial (% massa seca)", value=43.6, key="teor_c")
+teor_nitrogenio_percent = st.number_input("Teor de nitrogênio inicial (% massa seca)", value=1.42, key="teor_n")
+
+# Verifica se os fluxos diários já foram calculados (seção 5)
+if 'df_fluxos' not in locals() or df_fluxos.empty:
+    st.warning("Calcule os fluxos diários na seção 5 primeiro.")
+else:
+    # Área do reator (valor fixo do artigo, pode ser parametrizado)
+    area_reator = 1.5  # m²
+    
+    # Recalcular intervalos entre medições (como na seção 6)
+    df_fluxos = df_fluxos.copy()
+    df_fluxos['data_prox'] = df_fluxos['data'].shift(-1)
+    df_fluxos['intervalo_dias'] = (df_fluxos['data_prox'] - df_fluxos['data']).dt.days
+    # Para o último dia, assumir intervalo igual à mediana dos anteriores
+    ultimo_intervalo = df_fluxos['intervalo_dias'].median()
+    df_fluxos.loc[df_fluxos.index[-1], 'intervalo_dias'] = ultimo_intervalo
+    
+    # Calcular massa emitida em cada período (kg)
+    df_fluxos['massa_CH4_kg'] = df_fluxos['fluxo_CH4_mg'] * 1e-6 * area_reator * df_fluxos['intervalo_dias'] * 24
+    df_fluxos['massa_N2O_kg'] = df_fluxos['fluxo_N2O_mg'] * 1e-6 * area_reator * df_fluxos['intervalo_dias'] * 24
+    
+    # Totais acumulados
+    total_CH4_kg = df_fluxos['massa_CH4_kg'].sum()
+    total_N2O_kg = df_fluxos['massa_N2O_kg'].sum()
+    
+    # Converter para C e N perdidos
+    C_perdido_CH4 = total_CH4_kg * (M_C / M_CH4)
+    N_perdido_N2O = total_N2O_kg * (2 * M_N / M_N2O)
+    
+    # Estoques iniciais
+    C_total_inicial_kg = massa_inicial_kg * (teor_carbono_percent / 100)
+    N_total_inicial_kg = massa_inicial_kg * (teor_nitrogenio_percent / 100)
+    
+    # Percentuais
+    perc_C = (C_perdido_CH4 / C_total_inicial_kg) * 100 if C_total_inicial_kg > 0 else 0
+    perc_N = (N_perdido_N2O / N_total_inicial_kg) * 100 if N_total_inicial_kg > 0 else 0
+    
+    # Exibir resultados
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Carbono perdido como CH₄", f"{C_perdido_CH4:.4f} kg", f"{perc_C:.3f}% do C inicial")
+    with col2:
+        st.metric("Nitrogênio perdido como N₂O", f"{N_perdido_N2O:.4f} kg", f"{perc_N:.3f}% do N inicial")
+    
+    st.info(f"**Referência Yang et al. (2017):** 0,13% do C e 0,92% do N")
 
 # ============================================================
 # SEÇÃO 6: COMPARAÇÃO COM RESULTADOS DO ARTIGO (OPCIONAL)
