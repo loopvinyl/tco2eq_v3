@@ -139,6 +139,23 @@ dados["CO2eq_total_g"] = dados["CH4_CO2eq_g"] + dados["N2O_CO2eq_g"]
 
 dados["CO2eq_acum_g"] = dados["CO2eq_total_g"].cumsum()
 
+
+# -----------------------------
+# CO2eq por gás
+# -----------------------------
+
+st.subheader("Emissões de cada gás em CO2 equivalente")
+
+dados["CH4_CO2eq_acum_g"] = dados["CH4_CO2eq_g"].cumsum()
+dados["N2O_CO2eq_acum_g"] = dados["N2O_CO2eq_g"].cumsum()
+
+st.line_chart(dados[["CH4_CO2eq_acum_g","N2O_CO2eq_acum_g"]])
+
+
+# -----------------------------
+# CO2eq total
+# -----------------------------
+
 st.subheader("Emissões acumuladas em CO2 equivalente")
 
 st.line_chart(dados["CO2eq_acum_g"])
