@@ -274,3 +274,6 @@ if st.checkbox("Calcular emissões acumuladas (necessário área do reator e int
 # ============================================================
 st.markdown("---")
 st.caption("Aplicativo desenvolvido para análise de emissões em vermicompostagem, baseado em Yang et al. 2017.")
+
+st.write("Estatísticas das concentrações:")
+st.write(dados[['CH4_ppm', 'N2O_ppm']].describe())
