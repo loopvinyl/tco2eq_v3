@@ -20,7 +20,7 @@ M_C = 12.01                    # g/mol
 M_N = 14.01                    # g/mol
 
 # ============================================================
-# CARREGAMENTO DOS DADOS (AGORA FIXO)
+# CARREGAMENTO DOS DADOS (FIXO)
 # ============================================================
 st.sidebar.header("Configurações")
 
@@ -66,11 +66,11 @@ st.write("Massa média CH4 (g):", round(dados['massa_CH4_g'].mean(), 4))
 st.write("Massa média N2O (g):", round(dados['massa_N2O_g'].mean(), 4))
 
 # ============================================================
-# SEÇÃO 2: PERDA DE CARBONO E NITROGÊNIO (EXISTENTE)
+# SEÇÃO 2: PERDA DE CARBONO E NITROGÊNIO (EXISTENTE) - VALORES DEFAULT AJUSTADOS
 # ============================================================
 st.header("2. Perda de C e N (base acumulada)")
-# Supor que a massa inicial do material é conhecida
-massa_inicial_kg = st.number_input("Massa inicial do material (kg)", value=500.0)
+# Massa seca inicial do material (kg) - default 375 kg (calibrado)
+massa_inicial_kg = st.number_input("Massa inicial do material (kg)", value=375.0)
 teor_carbono_percent = st.number_input("Teor de carbono inicial (% massa seca)", value=43.6)
 teor_nitrogenio_percent = st.number_input("Teor de nitrogênio inicial (% massa seca)", value=1.42)
 
