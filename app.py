@@ -19,23 +19,18 @@ M_C = 12.01                   # g/mol
 M_N = 14.01                   # g/mol
 
 # ============================================================
-# CARREGAMENTO DOS DADOS (qualquer CSV com pelo menos timestamp, CH4_ppm, N2O_ppm)
+# CARREGAMENTO DOS DADOS
 # ============================================================
-uploaded_file = st.file_uploader("Carregue o arquivo CSV com os dados do cromatógrafo", type=['csv'])
-if uploaded_file is not None:
-    dados = pd.read_csv(uploaded_file, parse_dates=['timestamp'])
+try:
+    # Tenta ler o arquivo CSV (pode ser o completo ou só cromatógrafo)
+    dados = pd.read_csv('dados_cromatografo.csv', parse_dates=['timestamp'])
     dados.set_index('timestamp', inplace=True)
-    st.success("✅ Arquivo carregado com sucesso!")
-else:
-    st.warning("Por favor, carregue um arquivo CSV.")
+    st.success("✅ Arquivo 'dados_cromatografo.csv' carregado!")
+except FileNotFoundError:
+    st.error("❌ Arquivo 'dados_cromatografo.csv' não encontrado. Certifique-se de que ele está na mesma pasta do app.")
     st.stop()
 
-# Verificar colunas necessárias
-colunas_necessarias = ['CH4_ppm', 'N2O_ppm']
-if not all(col in dados.columns for col in colunas_necessarias):
-    st.error(f"O arquivo deve conter as colunas: {colunas_necessarias}")
-    st.stop()
-
+# Visualização inicial
 st.subheader("Visualização dos dados carregados")
 st.write(dados.head())
 
@@ -55,26 +50,24 @@ C_inicial_kg = massa_seca_kg * (teor_c_perc / 100)
 N_inicial_kg = massa_seca_kg * (teor_n_gkg / 1000)
 
 # ============================================================
-# CONDIÇÕES AMBIENTAIS (P e T)
+# VERIFICAÇÃO E AJUSTE DE PRESSÃO/TEMPERATURA
 # ============================================================
-st.sidebar.markdown("---")
-st.sidebar.subheader("Condições Ambientais")
-
-# Verifica se o CSV já tem colunas de pressão e temperatura
-tem_P = 'P_Pa' in dados.columns
-tem_T = 'T_K' in dados.columns
-
-if tem_P and tem_T:
-    st.sidebar.success("✅ Pressão e temperatura lidas do CSV.")
-    usar_p_t_fixo = False
+# Se as colunas de pressão e temperatura não existirem, o usuário fornece valores constantes
+if 'P_Pa' not in dados.columns or 'T_K' not in dados.columns:
+    st.info("O arquivo não contém colunas de pressão e temperatura. Informe os valores constantes abaixo.")
+    col_p, col_t = st.columns(2)
+    with col_p:
+        P_const = st.number_input("Pressão constante (Pa)", value=101325.0)
+    with col_t:
+        T_const = st.number_input("Temperatura constante (K)", value=298.15)
+    # Adiciona as colunas com valores constantes
+    dados['P_Pa'] = P_const
+    dados['T_K'] = T_const
 else:
-    st.sidebar.warning("CSV não contém P_Pa e/ou T_K. Use valores fixos abaixo.")
-    usar_p_t_fixo = True
-    pressao_fixa_pa = st.sidebar.number_input("Pressão fixa (Pa)", value=101325.0)
-    temp_fixa_k = st.sidebar.number_input("Temperatura fixa (K)", value=298.15)
+    st.success("Colunas de pressão e temperatura encontradas no arquivo.")
 
 # ============================================================
-# PARÂMETROS DA CÂMARA
+# PARÂMETROS DA CÂMARA (GERAL)
 # ============================================================
 st.subheader("Parâmetros da câmara")
 col1, col2 = st.columns(2)
@@ -89,14 +82,6 @@ with col2:
 st.header("1. Massa de gás na câmara")
 dados['CH4_mol'] = dados['CH4_ppm'] * 1e-6
 dados['N2O_mol'] = dados['N2O_ppm'] * 1e-6
-
-# Definir P e T para cada linha
-if usar_p_t_fixo:
-    dados['P_Pa'] = pressao_fixa_pa
-    dados['T_K'] = temp_fixa_k
-else:
-    # já existem
-    pass
 
 P_media = dados['P_Pa'].mean()
 T_media = dados['T_K'].mean()
@@ -246,7 +231,6 @@ if st.checkbox("Calcular emissões acumuladas (necessário área do reator e int
     C_perdido = total_CH4_kg * (M_C / M_CH4)
     N_perdido = total_N2O_kg * (2 * M_N / M_N2O)
     
-    # Usa os valores da sidebar (já calculados)
     st.write(f"Massa seca total (da sidebar): {massa_seca_kg:.2f} kg")
     C_inicial_kg = massa_seca_kg * (teor_c_perc / 100)
     N_inicial_kg = massa_seca_kg * (teor_n_gkg / 1000)
@@ -274,4 +258,4 @@ if st.checkbox("Calcular emissões acumuladas (necessário área do reator e int
 # RODAPÉ
 # ============================================================
 st.markdown("---")
-st.caption("Aplicativo desenvolvido para análise de emissões em vermicompostagem, baseado em Yang et al. 2017.")
+st.caption("Aplicativo desenvolvido para análise de emissões em vermicompostagem, baseado em Yang et al. 2017. Parâmetros iniciais conforme Excel 2.")
