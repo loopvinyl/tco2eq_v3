@@ -100,12 +100,13 @@ st.header("5. Fluxo de emissão - método de câmara de fluxo contínuo (Yang et
 
 st.markdown("""
 **Equação:**  
-\(E = \dfrac{Y \cdot Q_{sw}}{A}\)
 
-- \(E\): fluxo de emissão (mg m⁻² h⁻¹)  
-- \(Y\): concentração do gás na saída (mg m⁻³)  
-- \(Q_{sw}\): vazão de ar de arraste (m³ h⁻¹)  
-- \(A\): área da base da câmara (m²)
+$$E = \\frac{Y \\cdot Q_{sw}}{A}$$
+
+- **E**: fluxo de emissão (mg m⁻² h⁻¹)  
+- **Y**: concentração do gás na saída (mg m⁻³)  
+- **Qₛw**: vazão de ar de arraste (m³ h⁻¹)  
+- **A**: área da base da câmara (m²)
 """)
 
 col1, col2 = st.columns(2)
