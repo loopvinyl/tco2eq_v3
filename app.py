@@ -82,13 +82,12 @@ st.markdown("""
 col1, col2 = st.columns(2)
 with col1:
     Q_sw = st.number_input("Vazão de ar de arraste (L/min)", value=5.0, step=0.1)
-    # Área da câmara já definida nos parâmetros gerais
     area_camara_yang = area_camara
     st.write(f"Área da câmara (usada): **{area_camara_yang} m²**")
 with col2:
     st.info("Concentrações em ppm convertidas usando P e T médios.")
 
-Q_total_m3h = Q_sw * 60 / 1000  # L/min → m³/h (sem Q_ad)
+Q_total_m3h = Q_sw * 60 / 1000  # L/min → m³/h
 
 dados['data'] = dados.index.date
 fluxos_dia = []
@@ -124,9 +123,17 @@ st.line_chart(df_fluxos.set_index('data')[['fluxo_CH4_mg', 'fluxo_N2O_mg']])
 # ============================================================
 st.header("2. Perda de C e N (base acumulada)")
 
-massa_inicial_kg = st.number_input("Massa inicial do material (kg)", value=375.0, key="massa_inicial")
-teor_carbono_percent = st.number_input("Teor de carbono inicial (% massa seca)", value=43.6, key="teor_c")
-teor_nitrogenio_percent = st.number_input("Teor de nitrogênio inicial (% massa seca)", value=1.42, key="teor_n")
+col1, col2, col3 = st.columns(3)
+with col1:
+    massa_umida_kg = st.number_input("Massa úmida inicial do material (kg)", value=375.0, key="massa_umida")
+with col2:
+    umidade_percent = st.number_input("Umidade inicial (% massa total)", value=50.8, step=0.1, key="umidade")
+with col3:
+    teor_carbono_percent = st.number_input("Teor de carbono inicial (% massa seca)", value=43.6, key="teor_c")
+    teor_nitrogenio_g_kg = st.number_input("Teor de nitrogênio inicial (g/kg massa seca)", value=14.2, key="teor_n")
+
+# Calcula massa seca
+massa_seca_kg = massa_umida_kg * (1 - umidade_percent/100)
 
 if df_fluxos.empty:
     st.warning("Calcule os fluxos diários na seção 5 primeiro.")
@@ -151,8 +158,8 @@ else:
     C_perdido = total_CH4_kg * (M_C / M_CH4)
     N_perdido = total_N2O_kg * (2 * M_N / M_N2O)
     
-    C_total_kg = massa_inicial_kg * (teor_carbono_percent / 100)
-    N_total_kg = massa_inicial_kg * (teor_nitrogenio_percent / 100)
+    C_total_kg = massa_seca_kg * (teor_carbono_percent / 100)
+    N_total_kg = massa_seca_kg * (teor_nitrogenio_g_kg / 1000)
     
     perc_C = (C_perdido / C_total_kg) * 100 if C_total_kg > 0 else 0
     perc_N = (N_perdido / N_total_kg) * 100 if N_total_kg > 0 else 0
@@ -203,15 +210,13 @@ if st.checkbox("Calcular emissões acumuladas (necessário área do reator e int
     C_perdido = total_CH4_kg * (M_C / M_CH4)
     N_perdido = total_N2O_kg * (2 * M_N / M_N2O)
     
-    massa_seca_total = st.number_input("Massa seca total (kg)", value=375.0, key="massa_seca2")
-    teor_c = st.number_input("Teor de C inicial (%)", value=43.6, key="teor_c2")
-    teor_n = st.number_input("Teor de N inicial (%)", value=1.42, key="teor_n2")
+    # Usa a mesma massa seca calculada na seção 2
+    st.write(f"Massa seca total: {massa_seca_kg:.2f} kg")
+    C_inicial_kg = massa_seca_kg * (teor_carbono_percent / 100)
+    N_inicial_kg = massa_seca_kg * (teor_nitrogenio_g_kg / 1000)
     
-    C_inicial_kg = massa_seca_total * teor_c / 100
-    N_inicial_kg = massa_seca_total * teor_n / 100
-    
-    perc_C = (C_perdido / C_inicial_kg) * 100
-    perc_N = (N_perdido / N_inicial_kg) * 100
+    perc_C = (C_perdido / C_inicial_kg) * 100 if C_inicial_kg > 0 else 0
+    perc_N = (N_perdido / N_inicial_kg) * 100 if N_inicial_kg > 0 else 0
     
     st.write(f"**Carbono perdido como CH₄:** {C_perdido:.4f} kg ({perc_C:.3f}% do C inicial)")
     st.write(f"**Yang et al. (2017):** 0,13%")
@@ -223,7 +228,7 @@ if st.checkbox("Calcular emissões acumuladas (necessário área do reator e int
     CO2eq_CH4 = total_CH4_kg * GWP_CH4
     CO2eq_N2O = total_N2O_kg * GWP_N2O
     CO2eq_total = CO2eq_CH4 + CO2eq_N2O
-    CO2eq_por_t = CO2eq_total / (massa_seca_total / 1000)
+    CO2eq_por_t = CO2eq_total / (massa_seca_kg / 1000) if massa_seca_kg > 0 else 0
     
     st.write(f"**Emissão total de GEE:** {CO2eq_total:.2f} kg CO₂-eq")
     st.write(f"**Emissão por tonelada de MS:** {CO2eq_por_t:.2f} kg CO₂-eq/t MS")
