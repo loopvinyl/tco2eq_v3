@@ -65,35 +65,6 @@ st.write("Massa média CH₄ (mg):", round(dados['massa_CH4_mg'].mean(), 6))
 st.write("Massa média N₂O (mg):", round(dados['massa_N2O_mg'].mean(), 6))
 
 # ============================================================
-# SEÇÃO 4: FLUXO PELO MÉTODO dC/dt (CÂMARA ESTÁTICA)
-# ============================================================
-st.header("4. Fluxo de emissão - método da taxa de concentração (dC/dt)")
-
-dados['delta_t_h'] = dados.index.to_series().diff().dt.total_seconds() / 3600
-dados['dCH4_dt'] = dados['CH4_ppm'].diff() / dados['delta_t_h']
-dados['dN2O_dt'] = dados['N2O_ppm'].diff() / dados['delta_t_h']
-
-dados['flux_CH4_scientific'] = (
-    dados['dCH4_dt'] *
-    (dados['P_Pa'] * volume_camara) /
-    (R * dados['T_K']) *
-    M_CH4 /
-    area_camara
-) * 1000
-
-dados['flux_N2O_scientific'] = (
-    dados['dN2O_dt'] *
-    (dados['P_Pa'] * volume_camara) /
-    (R * dados['T_K']) *
-    M_N2O /
-    area_camara
-) * 1000
-
-st.line_chart(dados[['flux_CH4_scientific', 'flux_N2O_scientific']])
-st.write("Fluxo médio CH₄ (mg m⁻² h⁻¹):", round(dados['flux_CH4_scientific'].mean(), 4))
-st.write("Fluxo médio N₂O (mg m⁻² h⁻¹):", round(dados['flux_N2O_scientific'].mean(), 4))
-
-# ============================================================
 # SEÇÃO 5: MÉTODO DE CÂMARA DE FLUXO CONTÍNUO (YANG ET AL.)
 # ============================================================
 st.header("5. Fluxo de emissão - método de câmara de fluxo contínuo (Yang et al. 2017)")
