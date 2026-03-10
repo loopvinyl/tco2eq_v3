@@ -71,28 +71,24 @@ st.header("5. Fluxo de emissão - método de câmara de fluxo contínuo (Yang et
 
 st.markdown("""
 **Equação:**  
-\(E = \dfrac{Y \cdot (Q_{sw} + Q_{ad})}{A}\)
+\(E = \dfrac{Y \cdot Q_{sw}}{A}\)
 
 - \(E\): fluxo de emissão (mg m⁻² h⁻¹)  
 - \(Y\): concentração do gás na saída (mg m⁻³)  
 - \(Q_{sw}\): vazão de ar de arraste (m³ h⁻¹)  
-- \(Q_{ad}\): vazão adicional por traçador (m³ h⁻¹)  
 - \(A\): área da base da câmara (m²)
 """)
 
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 with col1:
     Q_sw = st.number_input("Vazão de ar de arraste (L/min)", value=5.0, step=0.1)
     # Área da câmara já definida nos parâmetros gerais
     area_camara_yang = area_camara
     st.write(f"Área da câmara (usada): **{area_camara_yang} m²**")
 with col2:
-    usar_Q_ad = st.checkbox("Usar vazão adicional (Q_ad)")
-    Q_ad = st.number_input("Q_ad (L/min)", value=0.0, step=0.1) if usar_Q_ad else 0.0
-with col3:
     st.info("Concentrações em ppm convertidas usando P e T médios.")
 
-Q_total_m3h = (Q_sw + Q_ad) * 60 / 1000  # L/min → m³/h
+Q_total_m3h = Q_sw * 60 / 1000  # L/min → m³/h (sem Q_ad)
 
 dados['data'] = dados.index.date
 fluxos_dia = []
