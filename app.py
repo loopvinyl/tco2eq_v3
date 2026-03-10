@@ -35,16 +35,17 @@ st.subheader("Visualização dos dados carregados")
 st.write(dados.head())
 
 # ============================================================
-# SIDEBAR - PARÂMETROS INICIAIS (baseados no Excel 2)
+# SIDEBAR - PARÂMETROS INICIAIS (baseados no Excel 2 - planilha "Meu")
 # ============================================================
 st.sidebar.header("Parâmetros Iniciais")
-massa_umida = st.sidebar.number_input("Massa Inicial Úmida (kg)", value=245.28)
-umidade_perc = st.sidebar.number_input("Umidade (%)", value=50.8)
+# Valores default conforme Excel: 2,03252 ton → 2032,52 kg, umidade 50,8%
+massa_umida = st.sidebar.number_input("Massa Inicial Úmida (kg)", value=2032.52, step=0.1)
+umidade_perc = st.sidebar.number_input("Umidade (%)", value=50.8, step=0.1)
 massa_seca_kg = massa_umida * (1 - umidade_perc / 100)
 st.sidebar.write(f"**Matéria Seca (MS):** {massa_seca_kg:.2f} kg")
 
-teor_c_perc = st.sidebar.number_input("Teor de C na MS (%)", value=43.6)
-teor_n_gkg = st.sidebar.number_input("Teor de N na MS (g/kg)", value=14.2)
+teor_c_perc = st.sidebar.number_input("Teor de C na MS (%)", value=43.6, step=0.1)
+teor_n_gkg = st.sidebar.number_input("Teor de N na MS (g/kg)", value=14.2, step=0.1)
 
 C_inicial_kg = massa_seca_kg * (teor_c_perc / 100)
 N_inicial_kg = massa_seca_kg * (teor_n_gkg / 1000)
@@ -258,4 +259,4 @@ if st.checkbox("Calcular emissões acumuladas (necessário área do reator e int
 # RODAPÉ
 # ============================================================
 st.markdown("---")
-st.caption("Aplicativo desenvolvido para análise de emissões em vermicompostagem, baseado em Yang et al. 2017. Parâmetros iniciais conforme Excel 2.")
+st.caption("Aplicativo desenvolvido para análise de emissões em vermicompostagem, baseado em Yang et al. 2017. Parâmetros iniciais conforme Excel 2 (planilhas 'Meu' e '8.1').")
