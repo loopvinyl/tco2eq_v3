@@ -22,7 +22,6 @@ M_N = 14.01                   # g/mol
 # CARREGAMENTO DOS DADOS
 # ============================================================
 try:
-    # Tenta ler o arquivo CSV (pode ser o completo ou só cromatógrafo)
     dados = pd.read_csv('dados_cromatografo.csv', parse_dates=['timestamp'])
     dados.set_index('timestamp', inplace=True)
     st.success("✅ Arquivo 'dados_cromatografo.csv' carregado!")
@@ -30,15 +29,13 @@ except FileNotFoundError:
     st.error("❌ Arquivo 'dados_cromatografo.csv' não encontrado. Certifique-se de que ele está na mesma pasta do app.")
     st.stop()
 
-# Visualização inicial
 st.subheader("Visualização dos dados carregados")
 st.write(dados.head())
 
 # ============================================================
-# SIDEBAR - PARÂMETROS INICIAIS (baseados no Excel 2 - planilha "Meu")
+# SIDEBAR - PARÂMETROS INICIAIS (baseados no Excel 2)
 # ============================================================
 st.sidebar.header("Parâmetros Iniciais")
-# Valores default conforme Excel: 2,03252 ton → 2032,52 kg, umidade 50,8%
 massa_umida = st.sidebar.number_input("Massa Inicial Úmida (kg)", value=2032.52, step=0.1)
 umidade_perc = st.sidebar.number_input("Umidade (%)", value=50.8, step=0.1)
 massa_seca_kg = massa_umida * (1 - umidade_perc / 100)
@@ -53,7 +50,6 @@ N_inicial_kg = massa_seca_kg * (teor_n_gkg / 1000)
 # ============================================================
 # VERIFICAÇÃO E AJUSTE DE PRESSÃO/TEMPERATURA
 # ============================================================
-# Se as colunas de pressão e temperatura não existirem, o usuário fornece valores constantes
 if 'P_Pa' not in dados.columns or 'T_K' not in dados.columns:
     st.info("O arquivo não contém colunas de pressão e temperatura. Informe os valores constantes abaixo.")
     col_p, col_t = st.columns(2)
@@ -61,7 +57,6 @@ if 'P_Pa' not in dados.columns or 'T_K' not in dados.columns:
         P_const = st.number_input("Pressão constante (Pa)", value=101325.0)
     with col_t:
         T_const = st.number_input("Temperatura constante (K)", value=298.15)
-    # Adiciona as colunas com valores constantes
     dados['P_Pa'] = P_const
     dados['T_K'] = T_const
 else:
@@ -91,7 +86,6 @@ n_total = (P_media * volume_camara) / (R * T_media)   # mol
 dados['massa_CH4_g'] = dados['CH4_mol'] * n_total * M_CH4
 dados['massa_N2O_g'] = dados['N2O_mol'] * n_total * M_N2O
 
-# Converter para miligramas
 dados['massa_CH4_mg'] = dados['massa_CH4_g'] * 1000
 dados['massa_N2O_mg'] = dados['massa_N2O_g'] * 1000
 
@@ -161,15 +155,12 @@ st.header("2. Perda de C e N (base acumulada)")
 if df_fluxos.empty:
     st.warning("Calcule os fluxos diários na seção 5 primeiro.")
 else:
-    # Calcula intervalos entre medições (em dias)
     df_temp = df_fluxos.copy()
     df_temp['data_prox'] = df_temp['data'].shift(-1)
     df_temp['intervalo_dias'] = (df_temp['data_prox'] - df_temp['data']).dt.days
-    # Último intervalo: usar a mediana dos anteriores
     ultimo_intervalo = df_temp['intervalo_dias'].median()
     df_temp.loc[df_temp.index[-1], 'intervalo_dias'] = ultimo_intervalo
     
-    # Massa emitida em cada período (kg)
     df_temp['massa_CH4_kg'] = df_temp['fluxo_CH4_mg'] * 1e-6 * area_reator * df_temp['intervalo_dias'] * 24
     df_temp['massa_N2O_kg'] = df_temp['fluxo_N2O_mg'] * 1e-6 * area_reator * df_temp['intervalo_dias'] * 24
     
@@ -179,12 +170,8 @@ else:
     C_perdido = total_CH4_kg * (M_C / M_CH4)
     N_perdido = total_N2O_kg * (2 * M_N / M_N2O)
     
-    # Usa os valores da sidebar para massa seca e teores
-    C_total_kg = C_inicial_kg
-    N_total_kg = N_inicial_kg
-    
-    perc_C = (C_perdido / C_total_kg) * 100 if C_total_kg > 0 else 0
-    perc_N = (N_perdido / N_total_kg) * 100 if N_total_kg > 0 else 0
+    perc_C = (C_perdido / C_inicial_kg) * 100 if C_inicial_kg > 0 else 0
+    perc_N = (N_perdido / N_inicial_kg) * 100 if N_inicial_kg > 0 else 0
     
     col1, col2 = st.columns(2)
     with col1:
