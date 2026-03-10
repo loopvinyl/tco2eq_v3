@@ -202,7 +202,7 @@ else:
         )
     
     st.caption("Os valores negativos indicam perda de carbono e nitrogênio do sistema, emitidos como CH₄ e N₂O.")
-    st.info("**Referência Yang et al. (2017):** 0,13% do C e 0,92% do N")
+    st.info("**Referência Yang et al. (2017) - valores corrigidos:** 0,0134% do C e 0,0924% do N")
 
 # ============================================================
 # SEÇÃO 6: COMPARAÇÃO DETALHADA (OPCIONAL)
@@ -239,9 +239,9 @@ if st.checkbox("Calcular emissões acumuladas (necessário área do reator e int
     perc_N = (N_perdido / N_inicial_kg) * 100
     
     st.write(f"**Carbono perdido como CH₄:** {C_perdido:.4f} kg ({perc_C:.3f}% do C inicial)")
-    st.write(f"**Yang et al. (2017):** 0,13%")
+    st.write(f"**Yang et al. (2017) - valores corrigidos:** 0,0134%")
     st.write(f"**Nitrogênio perdido como N₂O:** {N_perdido:.4f} kg ({perc_N:.3f}% do N inicial)")
-    st.write(f"**Yang et al. (2017):** 0,92%")
+    st.write(f"**Yang et al. (2017) - valores corrigidos:** 0,0924%")
     
     GWP_CH4 = 25
     GWP_N2O = 298
@@ -252,7 +252,7 @@ if st.checkbox("Calcular emissões acumuladas (necessário área do reator e int
     
     st.write(f"**Emissão total de GEE:** {CO2eq_total:.2f} kg CO₂-eq")
     st.write(f"**Emissão por tonelada de MS:** {CO2eq_por_t:.2f} kg CO₂-eq/t MS")
-    st.write(f"**Yang et al. (2017):** 8,1 kg CO₂-eq/t MS")
+    st.write(f"**Yang et al. (2017) - valores corrigidos:** 8,1 kg CO₂-eq/t MS")
 
 # ============================================================
 # RODAPÉ
